@@ -1,0 +1,9 @@
+{
+  "provider": "hashicorp/azurerm",
+  "resource": "azurerm_container_app",
+  "fields": {
+    "impl": [],
+    "always_allow": [],
+    "never_allow": []
+  }
+}
