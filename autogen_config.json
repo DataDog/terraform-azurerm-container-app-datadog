@@ -1,9 +1,24 @@
 {
-  "provider": "hashicorp/azurerm",
-  "resource": "azurerm_container_app",
-  "fields": {
-    "impl": [],
-    "always_allow": [],
-    "never_allow": []
-  }
+    "$schema": "./autogen_config_schema.json",
+    "provider": "hashicorp/azurerm",
+    "resource": "azurerm_container_app",
+    "scrape_docs": true,
+    "fields": {
+        "impl": [],
+        "always_allow": [
+            "identity.principal_id",
+            "identity.tenant_id",
+            "ingress.custom_domain",
+            "ingress.fqdn",
+            "template.revision_suffix",
+            "template.container.ephemeral_storage",
+            "template.container.liveness_probe.path",
+            "template.container.liveness_probe.termination_grace_period_seconds",
+            "template.container.readiness_probe.path",
+            "template.container.startup_probe.path",
+            "template.container.startup_probe.termination_grace_period_seconds",
+            "template.init_container.ephemeral_storage"
+        ],
+        "never_allow": []
+    }
 }
