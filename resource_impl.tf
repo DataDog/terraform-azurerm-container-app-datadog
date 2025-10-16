@@ -23,6 +23,8 @@ resource "azurerm_container_app" "this" {
     for_each = try(var.identity, null) != null ? [true] : []
     content {
       identity_ids = try(var.identity.identity_ids, null)
+      principal_id = var.identity.principal_id
+      tenant_id    = var.identity.tenant_id
       type         = var.identity.type
     }
   }
@@ -31,8 +33,10 @@ resource "azurerm_container_app" "this" {
     content {
       allow_insecure_connections = try(var.ingress.allow_insecure_connections, null)
       client_certificate_mode    = try(var.ingress.client_certificate_mode, null)
+      custom_domain              = var.ingress.custom_domain
       exposed_port               = try(var.ingress.exposed_port, null)
       external_enabled           = try(var.ingress.external_enabled, null)
+      fqdn                       = var.ingress.fqdn
       target_port                = var.ingress.target_port
       transport                  = try(var.ingress.transport, null)
       dynamic "cors" {
@@ -87,6 +91,7 @@ resource "azurerm_container_app" "this" {
   template {
     max_replicas                     = try(var.template.max_replicas, null)
     min_replicas                     = try(var.template.min_replicas, null)
+    revision_suffix                  = try(var.template.revision_suffix, null)
     termination_grace_period_seconds = try(var.template.termination_grace_period_seconds, null)
     dynamic "azure_queue_scale_rule" {
       for_each = try(var.template.azure_queue_scale_rule, null) != null ? var.template.azure_queue_scale_rule : []
@@ -106,12 +111,13 @@ resource "azurerm_container_app" "this" {
     dynamic "container" {
       for_each = try(var.template.container, null) != null ? var.template.container : []
       content {
-        args    = try(container.value.args, null)
-        command = try(container.value.command, null)
-        cpu     = container.value.cpu
-        image   = container.value.image
-        memory  = container.value.memory
-        name    = container.value.name
+        args              = try(container.value.args, null)
+        command           = try(container.value.command, null)
+        cpu               = container.value.cpu
+        ephemeral_storage = container.value.ephemeral_storage
+        image             = container.value.image
+        memory            = container.value.memory
+        name              = container.value.name
         dynamic "env" {
           for_each = try(container.value.env, null) != null ? container.value.env : []
           content {
@@ -123,13 +129,15 @@ resource "azurerm_container_app" "this" {
         dynamic "liveness_probe" {
           for_each = try(container.value.liveness_probe, null) != null ? container.value.liveness_probe : []
           content {
-            failure_count_threshold = try(liveness_probe.value.failure_count_threshold, null)
-            host                    = try(liveness_probe.value.host, null)
-            initial_delay           = try(liveness_probe.value.initial_delay, null)
-            interval_seconds        = try(liveness_probe.value.interval_seconds, null)
-            port                    = liveness_probe.value.port
-            timeout                 = try(liveness_probe.value.timeout, null)
-            transport               = liveness_probe.value.transport
+            failure_count_threshold          = try(liveness_probe.value.failure_count_threshold, null)
+            host                             = try(liveness_probe.value.host, null)
+            initial_delay                    = try(liveness_probe.value.initial_delay, null)
+            interval_seconds                 = try(liveness_probe.value.interval_seconds, null)
+            path                             = try(liveness_probe.value.path, null)
+            port                             = liveness_probe.value.port
+            termination_grace_period_seconds = liveness_probe.value.termination_grace_period_seconds
+            timeout                          = try(liveness_probe.value.timeout, null)
+            transport                        = liveness_probe.value.transport
             dynamic "header" {
               for_each = try(liveness_probe.value.header, null) != null ? liveness_probe.value.header : []
               content {
@@ -146,6 +154,7 @@ resource "azurerm_container_app" "this" {
             host                    = try(readiness_probe.value.host, null)
             initial_delay           = try(readiness_probe.value.initial_delay, null)
             interval_seconds        = try(readiness_probe.value.interval_seconds, null)
+            path                    = try(readiness_probe.value.path, null)
             port                    = readiness_probe.value.port
             success_count_threshold = try(readiness_probe.value.success_count_threshold, null)
             timeout                 = try(readiness_probe.value.timeout, null)
@@ -162,13 +171,15 @@ resource "azurerm_container_app" "this" {
         dynamic "startup_probe" {
           for_each = try(container.value.startup_probe, null) != null ? container.value.startup_probe : []
           content {
-            failure_count_threshold = try(startup_probe.value.failure_count_threshold, null)
-            host                    = try(startup_probe.value.host, null)
-            initial_delay           = try(startup_probe.value.initial_delay, null)
-            interval_seconds        = try(startup_probe.value.interval_seconds, null)
-            port                    = startup_probe.value.port
-            timeout                 = try(startup_probe.value.timeout, null)
-            transport               = startup_probe.value.transport
+            failure_count_threshold          = try(startup_probe.value.failure_count_threshold, null)
+            host                             = try(startup_probe.value.host, null)
+            initial_delay                    = try(startup_probe.value.initial_delay, null)
+            interval_seconds                 = try(startup_probe.value.interval_seconds, null)
+            path                             = try(startup_probe.value.path, null)
+            port                             = startup_probe.value.port
+            termination_grace_period_seconds = startup_probe.value.termination_grace_period_seconds
+            timeout                          = try(startup_probe.value.timeout, null)
+            transport                        = startup_probe.value.transport
             dynamic "header" {
               for_each = try(startup_probe.value.header, null) != null ? startup_probe.value.header : []
               content {
@@ -220,12 +231,13 @@ resource "azurerm_container_app" "this" {
     dynamic "init_container" {
       for_each = try(var.template.init_container, null) != null ? var.template.init_container : []
       content {
-        args    = try(init_container.value.args, null)
-        command = try(init_container.value.command, null)
-        cpu     = try(init_container.value.cpu, null)
-        image   = init_container.value.image
-        memory  = try(init_container.value.memory, null)
-        name    = init_container.value.name
+        args              = try(init_container.value.args, null)
+        command           = try(init_container.value.command, null)
+        cpu               = try(init_container.value.cpu, null)
+        ephemeral_storage = init_container.value.ephemeral_storage
+        image             = init_container.value.image
+        memory            = try(init_container.value.memory, null)
+        name              = init_container.value.name
         dynamic "env" {
           for_each = try(init_container.value.env, null) != null ? init_container.value.env : []
           content {
