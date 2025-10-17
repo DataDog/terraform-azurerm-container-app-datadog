@@ -65,7 +65,7 @@ variable "datadog_enable_logging" {
 
 variable "datadog_logging_path" {
   type        = string
-  description = "Datadog logging path to be used for log collection. Ensure var.datadog_enable_logging is true. Must begin with path given in var.datadog_shared_volume.mount_path."
+  description = "Datadog logging path to be used for log collection. Ensure var.datadog_enable_logging is true. Must begin with path given in var.datadog_shared_volume.path."
   default     = "/shared-volume/logs/*.log"
 }
 
@@ -89,58 +89,30 @@ variable "datadog_shared_volume" {
 
 variable "datadog_sidecar" {
   type = object({
-    image = optional(string, "index.docker.io/datadog/serverless-init:latest")
-    name  = optional(string, "datadog-sidecar")
-    resources = optional(object({
-      limits = optional(object({
-        cpu    = optional(string, "1")
-        memory = optional(string, "512Mi")
-      }), null),
-      }), { # default sidecar resources
-      limits = {
-        cpu    = "1"
-        memory = "512Mi"
-      }
-    })
-    startup_probe = optional(
-      object({
-        failure_threshold     = optional(number),
-        initial_delay_seconds = optional(number),
-        period_seconds        = optional(number),
-        timeout_seconds       = optional(number),
-      }),
-      { # default startup probe
-        failure_threshold     = 3
-        period_seconds        = 10
-        initial_delay_seconds = 0
-        timeout_seconds       = 1
-      }
-    )
-    health_port = optional(number, 5555) # DD_HEALTH_PORT
-    env = optional(list(object({         # user-customizable env vars for Datadog agent configuration
+    image       = optional(string, "index.docker.io/datadog/serverless-init:latest")
+    name        = optional(string, "datadog-sidecar")
+    cpu         = optional(number, 0.25)
+    memory      = optional(string, "0.5Gi")
+    health_port = optional(number, 5555)
+    env = optional(list(object({ # user-customizable env vars for Datadog agent configuration
       name  = string
       value = string
     })), null)
   })
   default = {
-    image     = "index.docker.io/datadog/serverless-init:latest"
-    name      = "datadog-sidecar"
-    resources = { limits = { cpu = "1", memory = "512Mi" } }
-    startup_probe = {
-      failure_threshold     = 3
-      period_seconds        = 10
-      initial_delay_seconds = 0
-      timeout_seconds       = 1
-    }
+    image       = "index.docker.io/datadog/serverless-init:latest"
+    name        = "datadog-sidecar"
+    cpu         = 0.25
+    memory      = "0.5Gi"
     health_port = 5555
   }
   description = <<DESCRIPTION
 Datadog sidecar configuration. Nested attributes include:
 - image - Image for version of Datadog agent to use.
 - name - Name of the sidecar container.
-- resources - Resources like for any cloud run container.
-- startup_probe - Startup probe settings only for failure_threshold, initial_delay_seconds, period_seconds, timeout_seconds.
+- cpu - CPU units to allocate to the sidecar container.
+- memory - Memory to allocate to the sidecar container.
 - health_port - Health port to start the startup probe.
-- env_vars - List of environment variables with name and value fieldsfor customizing Datadog agent configuration, if any.
+- env - List of environment variables with name and value fieldsfor customizing Datadog agent configuration, if any.
 DESCRIPTION
 }

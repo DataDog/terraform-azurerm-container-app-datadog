@@ -167,28 +167,26 @@ variable "template" {
       }))
     }))),
     container = list(object({
-      args              = optional(list(string)),
-      command           = optional(list(string)),
-      cpu               = number,
-      ephemeral_storage = string,
-      image             = string,
-      memory            = string,
-      name              = string,
+      args    = optional(list(string)),
+      command = optional(list(string)),
+      cpu     = number,
+      image   = string,
+      memory  = string,
+      name    = string,
       env = optional(list(object({
         name        = string,
         secret_name = optional(string),
         value       = optional(string)
       }))),
       liveness_probe = optional(list(object({
-        failure_count_threshold          = optional(number),
-        host                             = optional(string),
-        initial_delay                    = optional(number),
-        interval_seconds                 = optional(number),
-        path                             = optional(string),
-        port                             = number,
-        termination_grace_period_seconds = number,
-        timeout                          = optional(number),
-        transport                        = string,
+        failure_count_threshold = optional(number),
+        host                    = optional(string),
+        initial_delay           = optional(number),
+        interval_seconds        = optional(number),
+        path                    = optional(string),
+        port                    = number,
+        timeout                 = optional(number),
+        transport               = string,
         header = optional(list(object({
           name  = string,
           value = string
@@ -210,15 +208,14 @@ variable "template" {
         })))
       }))),
       startup_probe = optional(list(object({
-        failure_count_threshold          = optional(number),
-        host                             = optional(string),
-        initial_delay                    = optional(number),
-        interval_seconds                 = optional(number),
-        path                             = optional(string),
-        port                             = number,
-        termination_grace_period_seconds = number,
-        timeout                          = optional(number),
-        transport                        = string,
+        failure_count_threshold = optional(number),
+        host                    = optional(string),
+        initial_delay           = optional(number),
+        interval_seconds        = optional(number),
+        path                    = optional(string),
+        port                    = number,
+        timeout                 = optional(number),
+        transport               = string,
         header = optional(list(object({
           name  = string,
           value = string
@@ -248,13 +245,12 @@ variable "template" {
       })))
     }))),
     init_container = optional(list(object({
-      args              = optional(list(string)),
-      command           = optional(list(string)),
-      cpu               = optional(number),
-      ephemeral_storage = string,
-      image             = string,
-      memory            = optional(string),
-      name              = string,
+      args    = optional(list(string)),
+      command = optional(list(string)),
+      cpu     = optional(number),
+      image   = string,
+      memory  = optional(string),
+      name    = string,
       env = optional(list(object({
         name        = string,
         secret_name = optional(string),

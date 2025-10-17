@@ -1,12 +1,6 @@
 locals {
   module_version  = "1_0_0"
   datadog_service = var.datadog_service != null ? var.datadog_service : var.name
-  datadog_logging_vol = { # the shared volume for logging which each container can write their Datadog logs to
-    name = var.datadog_shared_volume.name
-    empty_dir = {
-      medium = "MEMORY"
-    }
-  }
   module_controlled_env_vars = [
     "DD_API_KEY",
     "DD_SITE",
@@ -43,7 +37,7 @@ locals {
   # filter out volume mounts with same name or path as the shared volume only if logging is enabled
   filtered_volume_mounts = var.datadog_enable_logging ? [
     for vm in coalesce(local.all_volume_mounts, []) :
-    vm if !(vm.name == var.datadog_shared_volume.name || vm.mount_path == var.datadog_shared_volume.mount_path)
+    vm if !(vm.name == var.datadog_shared_volume.name || vm.path == var.datadog_shared_volume.path)
   ] : local.all_volume_mounts
 
   # Merge env vars for sidecar-instrumentation with user-provided env vars for agent-configuration
@@ -79,7 +73,14 @@ locals {
     {
       env           = local.all_sidecar_env_vars
       volume_mounts = var.datadog_enable_logging ? [var.datadog_shared_volume] : []
-      startup_probe = merge(var.datadog_sidecar.startup_probe, { tcp_socket = { port = var.datadog_sidecar.health_port } })
+      startup_probe = [{
+        failure_threshold = 3
+        interval_seconds  = 10
+        initial_delay     = 0
+        timeout           = 1
+        port              = var.datadog_sidecar.health_port
+        transport         = "TCP"
+      }]
     },
   )
 }
@@ -93,8 +94,8 @@ check "logging_volume_already_exists" {
 
 check "logging_path_should_be_in_shared_volume" {
   assert {
-    condition     = startswith(var.datadog_logging_path, var.datadog_shared_volume.mount_path)
-    error_message = "The 'datadog_logging_path' must start with the 'mount_path' defined in 'datadog_shared_volume'."
+    condition     = startswith(var.datadog_logging_path, var.datadog_shared_volume.path)
+    error_message = "The 'datadog_logging_path' must start with the 'path' defined in 'datadog_shared_volume'."
   }
 }
 
@@ -108,7 +109,7 @@ check "sidecar_already_exists" {
 check "volume_mounts_share_names_and_or_paths" {
   assert {
     condition     = length(local.filtered_volume_mounts) == length(local.all_volume_mounts)
-    error_message = "Logging is enabled, and user-provided volume mounts overlap with values for var.datadog_shared_volume. This module will remove the following containers' volume_mounts sharing a name or path with the Datadog shared volume: ${join(",", [for vm in local.all_volume_mounts : format("\n%s:%s", vm.name, vm.mount_path) if !contains(local.filtered_volume_mounts, vm)])}.\nThis module will add the Datadog volume_mount instead to all containers."
+    error_message = "Logging is enabled, and user-provided volume mounts overlap with values for var.datadog_shared_volume. This module will remove the following containers' volume_mounts sharing a name or path with the Datadog shared volume: ${join(",", [for vm in local.all_volume_mounts : format("\n%s:%s", vm.name, vm.path) if !contains(local.filtered_volume_mounts, vm)])}.\nThis module will add the Datadog volume_mount instead to all containers."
   }
 }
 
@@ -117,7 +118,7 @@ check "volume_mounts_share_names_and_or_paths" {
 locals {
   tags = merge(
     var.tags,
-    { service = local.datadog_service, dd_sls_terraform_module_cloud_run = local.module_version },
+    { service = local.datadog_service, dd_sls_terraform_module = local.module_version },
     var.datadog_env != null ? { env = var.datadog_env } : {},
     var.datadog_version != null ? { version = var.datadog_version } : {},
   )
@@ -151,11 +152,8 @@ locals {
 
   # If dd_enable_logging is true, add the shared volume to the template volumes
   template_volume = concat(local.volumes_without_shared_volume, var.datadog_enable_logging ? [{
-    name = var.datadog_shared_volume.name
-    empty_dir = {
-      medium     = "MEMORY"
-      size_limit = var.datadog_shared_volume.size_limit
-    }
+    name         = var.datadog_shared_volume.name
+    storage_type = "EmptyDir"
   }] : [])
 }
 
