@@ -4,7 +4,11 @@
     "resource": "azurerm_container_app",
     "scrape_docs": true,
     "fields": {
-        "impl": [],
+        "impl": [
+            "tags",
+            "template.container",
+            "template.volume"
+        ],
         "always_allow": [
             "identity.principal_id",
             "identity.tenant_id",

@@ -9,7 +9,7 @@ resource "azurerm_container_app" "this" {
   name                         = var.name
   resource_group_name          = var.resource_group_name
   revision_mode                = var.revision_mode
-  tags                         = try(var.tags, null)
+  tags                         = local.tags
   workload_profile_name        = try(var.workload_profile_name, null)
   dynamic "dapr" {
     for_each = try(var.dapr, null) != null ? [true] : []
@@ -109,7 +109,7 @@ resource "azurerm_container_app" "this" {
       }
     }
     dynamic "container" {
-      for_each = try(var.template.container, null) != null ? var.template.container : []
+      for_each = local.template_container
       content {
         args              = try(container.value.args, null)
         command           = try(container.value.command, null)
@@ -271,7 +271,7 @@ resource "azurerm_container_app" "this" {
       }
     }
     dynamic "volume" {
-      for_each = try(var.template.volume, null) != null ? var.template.volume : []
+      for_each = local.template_volume
       content {
         mount_options = try(volume.value.mount_options, null)
         name          = volume.value.name

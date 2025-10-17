@@ -12,8 +12,11 @@ DESCRIPTION
 }
 
 variable "max_inactive_revisions" {
-  type    = number
-  default = null
+  type        = number
+  default     = null
+  description = <<DESCRIPTION
+The maximum of inactive revisions allowed for this Container App.
+DESCRIPTION
 }
 
 variable "name" {
@@ -25,23 +28,35 @@ DESCRIPTION
 }
 
 variable "resource_group_name" {
-  type     = string
-  nullable = false
+  type        = string
+  nullable    = false
+  description = <<DESCRIPTION
+The name of the resource group in which the Container App Environment is to be created. Changing this forces a new resource to be created.
+DESCRIPTION
 }
 
 variable "revision_mode" {
-  type     = string
-  nullable = false
+  type        = string
+  nullable    = false
+  description = <<DESCRIPTION
+The revisions operational mode for the Container App. Possible values include `Single` and `Multiple`. In `Single` mode, a single revision is in operation at any given time. In `Multiple` mode, more than one revision can be active at a time and can be configured with load distribution via the `traffic_weight` block in the `ingress` configuration.
+DESCRIPTION
 }
 
 variable "tags" {
-  type    = map(string)
-  default = null
+  type        = map(string)
+  default     = null
+  description = <<DESCRIPTION
+A mapping of tags to assign to the Container App.
+DESCRIPTION
 }
 
 variable "workload_profile_name" {
-  type    = string
-  default = null
+  type        = string
+  default     = null
+  description = <<DESCRIPTION
+The name of the Workload Profile in the Container App Environment to place this Container App.
+DESCRIPTION
 }
 
 variable "dapr" {
@@ -50,7 +65,10 @@ variable "dapr" {
     app_port     = optional(number),
     app_protocol = optional(string)
   })
-  default = null
+  default     = null
+  description = <<DESCRIPTION
+A `dapr` block as detailed below.
+DESCRIPTION
 }
 
 variable "identity" {
@@ -60,7 +78,10 @@ variable "identity" {
     tenant_id    = string,
     type         = string
   })
-  default = null
+  default     = null
+  description = <<DESCRIPTION
+An `identity` block as detailed below.
+DESCRIPTION
 }
 
 variable "ingress" {
@@ -98,7 +119,10 @@ variable "ingress" {
       revision_suffix = optional(string)
     }))
   })
-  default = null
+  default     = null
+  description = <<DESCRIPTION
+An `ingress` block as detailed below.
+DESCRIPTION
 }
 
 variable "registry" {
@@ -108,7 +132,10 @@ variable "registry" {
     server               = string,
     username             = optional(string)
   }))
-  default = null
+  default     = null
+  description = <<DESCRIPTION
+A `registry` block as detailed below.
+DESCRIPTION
 }
 
 variable "secret" {
@@ -118,7 +145,10 @@ variable "secret" {
     name                = string,
     value               = optional(string)
   }))
-  default = null
+  default     = null
+  description = <<DESCRIPTION
+One or more `secret` block as detailed below.
+DESCRIPTION
 }
 
 variable "template" {
@@ -251,7 +281,10 @@ variable "template" {
       storage_type  = optional(string)
     })))
   })
-  nullable = false
+  nullable    = false
+  description = <<DESCRIPTION
+A `template` block as detailed below.
+DESCRIPTION
 }
 
 variable "timeouts" {

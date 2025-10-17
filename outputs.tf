@@ -19,7 +19,10 @@ DESCRIPTION
 }
 
 output "id" {
-  value = azurerm_container_app.this.id
+  description = <<DESCRIPTION
+The ID of the Container App.
+DESCRIPTION
+  value       = azurerm_container_app.this.id
 }
 
 output "latest_revision_fqdn" {
@@ -37,11 +40,17 @@ DESCRIPTION
 }
 
 output "location" {
-  value = azurerm_container_app.this.location
+  description = <<DESCRIPTION
+The location this Container App is deployed in. This is the same as the Environment in which it is deployed.
+DESCRIPTION
+  value       = azurerm_container_app.this.location
 }
 
 output "max_inactive_revisions" {
-  value = azurerm_container_app.this.max_inactive_revisions
+  description = <<DESCRIPTION
+The maximum of inactive revisions allowed for this Container App.
+DESCRIPTION
+  value       = azurerm_container_app.this.max_inactive_revisions
 }
 
 output "name" {
@@ -52,48 +61,81 @@ DESCRIPTION
 }
 
 output "outbound_ip_addresses" {
-  value = azurerm_container_app.this.outbound_ip_addresses
+  description = <<DESCRIPTION
+A list of the Public IP Addresses which the Container App uses for outbound network access.
+DESCRIPTION
+  value       = azurerm_container_app.this.outbound_ip_addresses
 }
 
 output "resource_group_name" {
-  value = azurerm_container_app.this.resource_group_name
+  description = <<DESCRIPTION
+The name of the resource group in which the Container App Environment is to be created. Changing this forces a new resource to be created.
+DESCRIPTION
+  value       = azurerm_container_app.this.resource_group_name
 }
 
 output "revision_mode" {
-  value = azurerm_container_app.this.revision_mode
+  description = <<DESCRIPTION
+The revisions operational mode for the Container App. Possible values include `Single` and `Multiple`. In `Single` mode, a single revision is in operation at any given time. In `Multiple` mode, more than one revision can be active at a time and can be configured with load distribution via the `traffic_weight` block in the `ingress` configuration.
+DESCRIPTION
+  value       = azurerm_container_app.this.revision_mode
 }
 
 output "tags" {
-  value = azurerm_container_app.this.tags
+  description = <<DESCRIPTION
+A mapping of tags to assign to the Container App.
+DESCRIPTION
+  value       = azurerm_container_app.this.tags
 }
 
 output "workload_profile_name" {
-  value = azurerm_container_app.this.workload_profile_name
+  description = <<DESCRIPTION
+The name of the Workload Profile in the Container App Environment to place this Container App.
+DESCRIPTION
+  value       = azurerm_container_app.this.workload_profile_name
 }
 
 output "dapr" {
-  value = azurerm_container_app.this.dapr
+  description = <<DESCRIPTION
+A `dapr` block as detailed below.
+DESCRIPTION
+  value       = azurerm_container_app.this.dapr
 }
 
 output "identity" {
-  value = azurerm_container_app.this.identity
+  description = <<DESCRIPTION
+An `identity` block as detailed below.
+DESCRIPTION
+  value       = azurerm_container_app.this.identity
 }
 
 output "ingress" {
-  value = azurerm_container_app.this.ingress
+  description = <<DESCRIPTION
+An `ingress` block as detailed below.
+DESCRIPTION
+  value       = azurerm_container_app.this.ingress
 }
 
 output "registry" {
-  value = azurerm_container_app.this.registry
+  description = <<DESCRIPTION
+A `registry` block as detailed below.
+DESCRIPTION
+  value       = azurerm_container_app.this.registry
 }
 
 output "secret" {
-  value     = azurerm_container_app.this.secret
-  sensitive = true
+  description = <<DESCRIPTION
+One or more `secret` block as detailed below.
+DESCRIPTION
+  value       = azurerm_container_app.this.secret
+  sensitive   = true
 }
 
 output "template" {
-  value = azurerm_container_app.this.template
+  description = <<DESCRIPTION
+A `template` block as detailed below.
+DESCRIPTION
+  value       = azurerm_container_app.this.template
 }
 
 output "timeouts" {
