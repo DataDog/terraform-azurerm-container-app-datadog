@@ -46,7 +46,7 @@ locals {
     vm if !(vm.name == var.datadog_shared_volume.name || vm.mount_path == var.datadog_shared_volume.mount_path)
   ] : local.all_volume_mounts
 
-  # User-check 4: merge env vars for sidecar-instrumentation with user-provided env vars for agent-configuration
+  # Merge env vars for sidecar-instrumentation with user-provided env vars for agent-configuration
   # (ignore any module-controlled env vars that user provides in var.datadog_sidecar.env)
   required_module_sidecar_env_vars = {
     DD_API_KEY     = var.datadog_api_key
@@ -108,7 +108,7 @@ check "sidecar_already_exists" {
 check "volume_mounts_share_names_and_or_paths" {
   assert {
     condition     = length(local.filtered_volume_mounts) == length(local.all_volume_mounts)
-    error_message = "Logging is enabled, and user-inputted volume mounts overlap with values for var.datadog_shared_volume. This module will remove the following containers' volume_mounts sharing a name or path with the Datadog shared volume: ${join(",", [for vm in local.all_volume_mounts : format("\n%s:%s", vm.name, vm.mount_path) if !contains(local.filtered_volume_mounts, vm)])}.\nThis module will add the Datadog volume_mount instead to all containers."
+    error_message = "Logging is enabled, and user-provided volume mounts overlap with values for var.datadog_shared_volume. This module will remove the following containers' volume_mounts sharing a name or path with the Datadog shared volume: ${join(",", [for vm in local.all_volume_mounts : format("\n%s:%s", vm.name, vm.mount_path) if !contains(local.filtered_volume_mounts, vm)])}.\nThis module will add the Datadog volume_mount instead to all containers."
   }
 }
 
@@ -132,12 +132,12 @@ locals {
           if env.secret_name != null && !contains(local.module_controlled_env_vars, env.name)],
           # Then add module-managed env vars
           [for name, value in merge(
-            # variables which can be overrided by user provided configuration
+            # variables which can be overrided by user-provided configuration
             local.shared_env_vars,
             { DD_LOGS_INJECTION = "true" },
-            # user provided env vars (without secret_name) converted to map
+            # user-provided env vars (without secret_name) converted to map
             { for env in coalesce(container.env, []) : env.name => env.value if env.secret_name == null },
-            # always override user configuration with these env vars
+            # always override user-provided configuration with these env vars
             { DD_SERVERLESS_LOG_PATH = var.datadog_logging_path }
           ) : { name = name, value = value, secret_name = null }]
         )
