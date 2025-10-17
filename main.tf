@@ -1,3 +1,8 @@
+# Unless explicitly stated otherwise all files in this repository are licensed under the Apache-2.0 License.
+# This product includes software developed at Datadog (https://www.datadoghq.com/) Copyright 2025 Datadog, Inc.
+
+data "azurerm_client_config" "current" {}
+
 locals {
   module_version  = "1_0_0"
   datadog_service = var.datadog_service != null ? var.datadog_service : var.name
@@ -8,6 +13,8 @@ locals {
     "DD_HEALTH_PORT",
     "DD_VERSION",
     "DD_ENV",
+    "DD_AZURE_SUBSCRIPTION_ID",
+    "DD_AZURE_RESOURCE_GROUP",
     "DD_TAGS",
     "DD_LOG_LEVEL",
     "DD_SERVERLESS_LOG_PATH",
@@ -43,10 +50,12 @@ locals {
   # Merge env vars for sidecar-instrumentation with user-provided env vars for agent-configuration
   # (ignore any module-controlled env vars that user provides in var.datadog_sidecar.env)
   required_module_sidecar_env_vars = {
-    DD_API_KEY     = var.datadog_api_key
-    DD_SITE        = var.datadog_site
-    DD_SERVICE     = local.datadog_service
-    DD_HEALTH_PORT = tostring(var.datadog_sidecar.health_port)
+    DD_API_KEY               = var.datadog_api_key
+    DD_SITE                  = var.datadog_site
+    DD_SERVICE               = local.datadog_service
+    DD_HEALTH_PORT           = tostring(var.datadog_sidecar.health_port)
+    DD_AZURE_SUBSCRIPTION_ID = data.azurerm_client_config.current.subscription_id
+    DD_AZURE_RESOURCE_GROUP  = var.resource_group_name
   }
   shared_env_vars = merge(
     { DD_SERVICE = local.datadog_service },
