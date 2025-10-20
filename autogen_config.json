@@ -6,6 +6,7 @@
     "fields": {
         "impl": [
             "tags",
+            "secret",
             "template.container",
             "template.volume"
         ],

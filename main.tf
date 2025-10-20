@@ -20,6 +20,7 @@ locals {
     "DD_SERVERLESS_LOG_PATH",
     "DD_LOGS_INJECTION", # this is not an env var needed on the sidecar anyways
   ]
+  datadog_api_key_secret_name = "dd-api-key"
 
 
   ### Variables to handle input checks and infrastructure overrides (volume, volume_mount, sidecar container)
@@ -50,7 +51,6 @@ locals {
   # Merge env vars for sidecar-instrumentation with user-provided env vars for agent-configuration
   # (ignore any module-controlled env vars that user provides in var.datadog_sidecar.env)
   required_module_sidecar_env_vars = {
-    DD_API_KEY               = var.datadog_api_key
     DD_SITE                  = var.datadog_site
     DD_SERVICE               = local.datadog_service
     DD_HEALTH_PORT           = tostring(var.datadog_sidecar.health_port)
@@ -70,12 +70,13 @@ locals {
     var.datadog_enable_logging ? { DD_SERVERLESS_LOG_PATH = var.datadog_logging_path } : {},
   )
   agent_env_vars = [ # user-provided env vars for agent-configuration, filter out the ones that are module-controlled
-    for env in coalesce(var.datadog_sidecar.env, []) : env
+    for env in coalesce(var.datadog_sidecar.env, []) : { name = env.name, value = env.value, secret_name = null }
     if !contains(local.module_controlled_env_vars, env.name)
   ]
   all_sidecar_env_vars = concat(
     local.agent_env_vars,
-    [for name, value in local.all_module_sidecar_env_vars : { name = name, value = value }]
+    [for name, value in local.all_module_sidecar_env_vars : { name = name, value = value, secret_name = null }],
+    [{ name = "DD_API_KEY", value = null, secret_name = local.datadog_api_key_secret_name }],
   )
   sidecar_container = merge(
     var.datadog_sidecar,
@@ -130,6 +131,11 @@ locals {
     { service = local.datadog_service, dd_sls_terraform_module = local.module_version },
     var.datadog_env != null ? { env = var.datadog_env } : {},
     var.datadog_version != null ? { version = var.datadog_version } : {},
+  )
+
+  secret = toset(concat(
+    [{ name = local.datadog_api_key_secret_name, value = var.datadog_api_key }],
+    tolist(coalesce(var.secret, []))),
   )
 
   # Update the environments on the containers
