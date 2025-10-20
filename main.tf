@@ -4,7 +4,7 @@
 data "azurerm_client_config" "current" {}
 
 locals {
-  module_version  = "1_0_0"
+  module_version  = "1.0.0"
   datadog_service = var.datadog_service != null ? var.datadog_service : var.name
   module_controlled_env_vars = [
     "DD_API_KEY",
