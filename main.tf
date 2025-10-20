@@ -1,0 +1,183 @@
+# Unless explicitly stated otherwise all files in this repository are licensed under the Apache-2.0 License.
+# This product includes software developed at Datadog (https://www.datadoghq.com/) Copyright 2025 Datadog, Inc.
+
+data "azurerm_client_config" "current" {}
+
+locals {
+  module_version  = "1.0.0"
+  datadog_service = var.datadog_service != null ? var.datadog_service : var.name
+  module_controlled_env_vars = [
+    "DD_API_KEY",
+    "DD_SITE",
+    "DD_SERVICE",
+    "DD_HEALTH_PORT",
+    "DD_VERSION",
+    "DD_ENV",
+    "DD_AZURE_SUBSCRIPTION_ID",
+    "DD_AZURE_RESOURCE_GROUP",
+    "DD_TAGS",
+    "DD_LOG_LEVEL",
+    "DD_SERVERLESS_LOG_PATH",
+    "DD_LOGS_INJECTION", # this is not an env var needed on the sidecar anyways
+  ]
+
+
+  ### Variables to handle input checks and infrastructure overrides (volume, volume_mount, sidecar container)
+  # Override user's `var.template.volume`s and remove the shared volume if shared_volume already exists and logging is enabled, else keep user's volumes
+  volumes_without_shared_volume = var.datadog_enable_logging ? [
+    for v in coalesce(var.template.volume, []) : v
+    if v.name != var.datadog_shared_volume.name
+  ] : coalesce(var.template.volume, [])
+
+  # Check if sidecar container already exists and remove it from the var.template.container list if it does (to be overridden by module's instantiation)
+  containers_without_sidecar = [
+    for c in coalesce(var.template.container, []) : c
+    if c.name != var.datadog_sidecar.name
+  ]
+
+  # Check for each provided container (ignoring sidecar if provided) the volume mounts and if logging is enabled, exclude all volume mounts with same name OR path as the shared volume
+  all_volume_mounts = flatten([
+    for c in coalesce(local.containers_without_sidecar, []) :
+    coalesce(c.volume_mounts, [])
+  ])
+
+  # filter out volume mounts with same name or path as the shared volume only if logging is enabled
+  filtered_volume_mounts = var.datadog_enable_logging ? [
+    for vm in coalesce(local.all_volume_mounts, []) :
+    vm if !(vm.name == var.datadog_shared_volume.name || vm.path == var.datadog_shared_volume.path)
+  ] : local.all_volume_mounts
+
+  # Merge env vars for sidecar-instrumentation with user-provided env vars for agent-configuration
+  # (ignore any module-controlled env vars that user provides in var.datadog_sidecar.env)
+  required_module_sidecar_env_vars = {
+    DD_API_KEY               = var.datadog_api_key
+    DD_SITE                  = var.datadog_site
+    DD_SERVICE               = local.datadog_service
+    DD_HEALTH_PORT           = tostring(var.datadog_sidecar.health_port)
+    DD_AZURE_SUBSCRIPTION_ID = data.azurerm_client_config.current.subscription_id
+    DD_AZURE_RESOURCE_GROUP  = var.resource_group_name
+  }
+  shared_env_vars = merge(
+    { DD_SERVICE = local.datadog_service },
+    var.datadog_version != null ? { DD_VERSION = var.datadog_version } : {},
+    var.datadog_env != null ? { DD_ENV = var.datadog_env } : {},
+    var.datadog_tags != null ? { DD_TAGS = join(",", var.datadog_tags) } : {},
+  )
+  all_module_sidecar_env_vars = merge(
+    local.shared_env_vars,
+    local.required_module_sidecar_env_vars,
+    var.datadog_log_level != null ? { DD_LOG_LEVEL = var.datadog_log_level } : {},
+    var.datadog_enable_logging ? { DD_SERVERLESS_LOG_PATH = var.datadog_logging_path } : {},
+  )
+  agent_env_vars = [ # user-provided env vars for agent-configuration, filter out the ones that are module-controlled
+    for env in coalesce(var.datadog_sidecar.env, []) : env
+    if !contains(local.module_controlled_env_vars, env.name)
+  ]
+  all_sidecar_env_vars = concat(
+    local.agent_env_vars,
+    [for name, value in local.all_module_sidecar_env_vars : { name = name, value = value }]
+  )
+  sidecar_container = merge(
+    var.datadog_sidecar,
+    {
+      env           = local.all_sidecar_env_vars
+      volume_mounts = var.datadog_enable_logging ? [var.datadog_shared_volume] : []
+      startup_probe = [{
+        failure_threshold = 3
+        interval_seconds  = 10
+        initial_delay     = 0
+        timeout           = 1
+        port              = var.datadog_sidecar.health_port
+        transport         = "TCP"
+      }]
+    },
+  )
+}
+
+check "logging_volume_already_exists" {
+  assert {
+    condition     = length(coalesce(var.template.volume, [])) == length(local.volumes_without_shared_volume)
+    error_message = "Datadog log collection is enabled and a volume with the name \"${var.datadog_shared_volume.name}\" already exists in the var.template.volume list. This module will override the existing volume with the settings provided in var.datadog_shared_volume and use it for Datadog log collection. To disable log collection, set var.datadog_enable_logging to false."
+  }
+}
+
+check "logging_path_should_be_in_shared_volume" {
+  assert {
+    condition     = startswith(var.datadog_logging_path, var.datadog_shared_volume.path)
+    error_message = "The 'datadog_logging_path' must start with the 'path' defined in 'datadog_shared_volume'."
+  }
+}
+
+check "sidecar_already_exists" {
+  assert {
+    condition     = length(coalesce(var.template.container, [])) == length(local.containers_without_sidecar)
+    error_message = "A sidecar container with the name \"${var.datadog_sidecar.name}\" already exists in the var.template.container list. This module will override the existing container(s) with the settings provided in var.datadog_sidecar."
+  }
+}
+
+check "volume_mounts_share_names_and_or_paths" {
+  assert {
+    condition     = length(local.filtered_volume_mounts) == length(local.all_volume_mounts)
+    error_message = "Logging is enabled, and user-provided volume mounts overlap with values for var.datadog_shared_volume. This module will remove the following containers' volume_mounts sharing a name or path with the Datadog shared volume: ${join(",", [for vm in local.all_volume_mounts : format("\n%s:%s", vm.name, vm.path) if !contains(local.filtered_volume_mounts, vm)])}.\nThis module will add the Datadog volume_mount instead to all containers."
+  }
+}
+
+
+# Implementation
+locals {
+  tags = merge(
+    var.tags,
+    { service = local.datadog_service, dd_sls_terraform_module = local.module_version },
+    var.datadog_env != null ? { env = var.datadog_env } : {},
+    var.datadog_version != null ? { version = var.datadog_version } : {},
+  )
+
+  # Update the environments on the containers
+  template_container = concat([local.sidecar_container],
+    [for container in local.containers_without_sidecar :
+      merge(container, {
+        env = concat(
+          # First, preserve user-defined env vars with secret_name
+          [for env in coalesce(container.env, []) : { name = env.name, value = env.value, secret_name = env.secret_name }
+          if env.secret_name != null && !contains(local.module_controlled_env_vars, env.name)],
+          # Then add module-managed env vars
+          [for name, value in merge(
+            # variables which can be overrided by user-provided configuration
+            local.shared_env_vars,
+            { DD_LOGS_INJECTION = "true" },
+            # user-provided env vars (without secret_name) converted to map
+            { for env in coalesce(container.env, []) : env.name => env.value if env.secret_name == null },
+            # always override user-provided configuration with these env vars
+            { DD_SERVERLESS_LOG_PATH = var.datadog_logging_path }
+          ) : { name = name, value = value, secret_name = null }]
+        )
+        # Check for each provided container the volume mounts and if logging is enabled and the shared volume is an input, do not mount it again
+        volume_mounts = concat(
+          var.datadog_enable_logging ? [var.datadog_shared_volume] : [],
+          [for vm in coalesce(container.volume_mounts, []) : vm if contains(local.filtered_volume_mounts, vm)],
+        )
+    })]
+  )
+
+  # If dd_enable_logging is true, add the shared volume to the template volumes
+  template_volume = concat(local.volumes_without_shared_volume, var.datadog_enable_logging ? [{
+    name         = var.datadog_shared_volume.name
+    storage_type = "EmptyDir"
+  }] : [])
+}
+
+
+output "ignored_volume_mounts" {
+  description = "List of volume mounts that overlap with the Datadog shared volume and are ignored by the module."
+  value       = [for vm in local.all_volume_mounts : vm if !contains(local.filtered_volume_mounts, vm)]
+}
+
+output "ignored_containers" {
+  description = "List of containers that are ignored by the module."
+  value       = [for c in coalesce(var.template.container, []) : c if !contains(local.containers_without_sidecar, c)]
+}
+
+output "ignored_volumes" {
+  description = "List of volumes that are ignored by the module."
+  value       = [for v in coalesce(var.template.volume, []) : v if !contains(local.volumes_without_shared_volume, v)]
+}

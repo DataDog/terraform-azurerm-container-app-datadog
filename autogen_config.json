@@ -4,20 +4,20 @@
     "resource": "azurerm_container_app",
     "scrape_docs": true,
     "fields": {
-        "impl": [],
+        "impl": [
+            "tags",
+            "template.container",
+            "template.volume"
+        ],
         "always_allow": [
             "identity.principal_id",
             "identity.tenant_id",
             "ingress.custom_domain",
             "ingress.fqdn",
             "template.revision_suffix",
-            "template.container.ephemeral_storage",
             "template.container.liveness_probe.path",
-            "template.container.liveness_probe.termination_grace_period_seconds",
             "template.container.readiness_probe.path",
-            "template.container.startup_probe.path",
-            "template.container.startup_probe.termination_grace_period_seconds",
-            "template.init_container.ephemeral_storage"
+            "template.container.startup_probe.path"
         ],
         "never_allow": []
     }
