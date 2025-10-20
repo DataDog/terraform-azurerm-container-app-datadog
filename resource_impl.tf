@@ -80,7 +80,7 @@ resource "azurerm_container_app" "this" {
     }
   }
   dynamic "secret" {
-    for_each = try(var.secret, null) != null ? var.secret : []
+    for_each = local.secret
     content {
       identity            = try(secret.value.identity, null)
       key_vault_secret_id = try(secret.value.key_vault_secret_id, null)
