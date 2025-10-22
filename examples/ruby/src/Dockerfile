@@ -15,8 +15,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY Gemfile .
-RUN bundle install
+COPY Gemfile Gemfile.lock* ./
+
+# Install gems with platform-specific flags
+RUN bundle config set --local deployment 'false' && \
+    bundle config set --local path 'vendor/bundle' && \
+    bundle install --jobs 4 --retry 3
 
 ENV PORT=8080
 EXPOSE 8080
