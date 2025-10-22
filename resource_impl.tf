@@ -33,10 +33,8 @@ resource "azurerm_container_app" "this" {
     content {
       allow_insecure_connections = try(var.ingress.allow_insecure_connections, null)
       client_certificate_mode    = try(var.ingress.client_certificate_mode, null)
-      custom_domain              = var.ingress.custom_domain
       exposed_port               = try(var.ingress.exposed_port, null)
       external_enabled           = try(var.ingress.external_enabled, null)
-      fqdn                       = var.ingress.fqdn
       target_port                = var.ingress.target_port
       transport                  = try(var.ingress.transport, null)
       dynamic "cors" {

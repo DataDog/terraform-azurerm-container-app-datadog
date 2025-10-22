@@ -133,9 +133,9 @@ locals {
     var.datadog_version != null ? { version = var.datadog_version } : {},
   )
 
-  secret = toset(concat(
+  secret = concat(
     [{ name = local.datadog_api_key_secret_name, value = var.datadog_api_key }],
-    tolist(coalesce(var.secret, []))),
+    tolist(coalesce(var.secret, [])),
   )
 
   # Update the environments on the containers
