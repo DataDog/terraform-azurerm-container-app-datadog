@@ -91,8 +91,8 @@ variable "datadog_sidecar" {
   type = object({
     image       = optional(string, "index.docker.io/datadog/serverless-init:latest")
     name        = optional(string, "datadog-sidecar")
-    cpu         = optional(number, 0.25)
-    memory      = optional(string, "0.5Gi")
+    cpu         = optional(number, 0.5)
+    memory      = optional(string, "1Gi")
     health_port = optional(number, 5555)
     env = optional(list(object({ # user-customizable env vars for Datadog agent configuration
       name  = string
@@ -102,8 +102,8 @@ variable "datadog_sidecar" {
   default = {
     image       = "index.docker.io/datadog/serverless-init:latest"
     name        = "datadog-sidecar"
-    cpu         = 0.25
-    memory      = "0.5Gi"
+    cpu         = 0.5
+    memory      = "1Gi"
     health_port = 5555
   }
   description = <<DESCRIPTION
