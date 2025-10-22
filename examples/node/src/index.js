@@ -13,7 +13,9 @@ const tracer = require('dd-trace').init({
 });
 
 const express = require('express');
+const helmet = require('helmet');
 const app = express();
+app.use(helmet());
 app.disable('X-Powered-By');
 
 const { createLogger, format, transports } = require('winston');
