@@ -7,8 +7,7 @@
 
 const rawLogPath = process.env.DD_SERVERLESS_LOG_PATH;
 const LOG_FILE = rawLogPath && rawLogPath !== '' ? rawLogPath.replace('*.log', 'app.log') : '/shared-volume/logs/app.log';
-console.log('LOG_FILE: ', LOG_FILE);
-const tracer = require('dd-trace').init({
+require('dd-trace').init({
   logInjection: true,
 });
 
@@ -16,7 +15,6 @@ const express = require('express');
 const helmet = require('helmet');
 const app = express();
 app.use(helmet());
-app.disable('X-Powered-By');
 
 const { createLogger, format, transports } = require('winston');
 

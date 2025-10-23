@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	httptrace "github.com/DataDog/dd-trace-go/contrib/net/http/v2"
 	dd_logrus "github.com/DataDog/dd-trace-go/contrib/sirupsen/logrus/v2"
@@ -41,7 +42,7 @@ func main() {
 	tracer.Start()
 	defer tracer.Stop()
 
-	os.MkdirAll(filepath.Dir(LOG_FILE), 0755)
+	os.MkdirAll(filepath.Dir(LOG_FILE), 0664)
 	logFile, err := os.OpenFile(LOG_FILE, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		logrus.Fatalf("Failed to open log file: %v", err)
@@ -66,7 +67,15 @@ func main() {
 
 	logrus.Infof("Starting server on port %s", PORT)
 
-	if err := http.ListenAndServe(":"+PORT, mux); err != nil {
+	server := &http.Server{
+		Addr:         ":" + PORT,
+		Handler:      mux,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	if err := server.ListenAndServe(); err != nil {
 		logrus.Fatalf("Server failed to start: %v", err)
 	}
 }

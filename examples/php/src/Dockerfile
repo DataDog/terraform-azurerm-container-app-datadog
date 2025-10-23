@@ -10,9 +10,9 @@ FROM php:8.4-apache
 WORKDIR /var/www/html
 
 # Install system dependencies and Composer
-RUN apt-get update && apt-get install -y \
-    zip \
-    unzip \
+RUN apt-get update && apt-get install --no-install-recommends -y \
+    zip=3.0-* \
+    unzip=6.0-* \
     && rm -rf /var/lib/apt/lists/*
 RUN apt-get clean
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
