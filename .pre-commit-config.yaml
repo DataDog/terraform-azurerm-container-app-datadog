@@ -18,4 +18,4 @@ repos:
         entry: terraform-docs . --config .terraform-docs.yml
         language: system
         pass_filenames: false
-        types: [terraform]
+        types: [terraform, markdown]

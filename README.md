@@ -10,6 +10,98 @@ Use this Terraform module to install Datadog Serverless Monitoring for Azure Con
 * configuring environment variables for Datadog instrumentation
 
 
+
+## Usage
+
+```tf
+variable "datadog_api_key" {
+  type      = string
+  sensitive = true
+}
+
+resource "azurerm_resource_group" "example" {
+  name = "my-resource-group"
+  location = "eastus2"
+}
+
+resource "azurerm_container_app_environment" "example" {
+  name = "my-container-app-env"
+  resource_group_name = azurerm_resource_group.example.name
+  location = "eastus2"
+}
+
+module "example_container_app" {
+  source  = "DataDog/container-app-datadog/azurerm"
+  version = "~> 1.0"
+
+  name                         = "my-container-app"
+  resource_group_name          = azurerm_resource_group.example.name
+  container_app_environment_id = azurerm_container_app_environment.example.name
+
+
+  datadog_api_key = var.datadog_api_key
+  datadog_site    = "datadoghq.com"
+  datadog_service = "my-service"
+  datadog_env     = "dev"
+  datadog_version = "0.1.0"
+
+  revision_mode         = "Single"
+  workload_profile_name = "Consumption"
+  ingress = {
+    external_enabled = true
+    target_port      = 8080
+    traffic_weight = [{
+      percentage      = 100
+      latest_revision = true
+    }]
+  }
+  template = {
+    container = [{
+      cpu    = 0.5
+      memory = "1Gi"
+      image  = "docker.io/your-docker-image:latest"
+      name   = "main"
+    }]
+  }
+}
+```
+
+## Configuration
+
+- All arguments available in the [azurerm_container_app](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/container_app#arguments-reference) resource are available in this Terraform module.
+- All blocks (`template`, `container`, `volume`, etc) in the resource are represented in the module as objects with required types - insert an `=`
+- Any optional blocks that can occur multiple times are represented as a list-collection of objects with the same types/parameters as the blocks
+- See [variables.tf](variables.tf) for the complete list of datadog-specific variables, or the table below for full syntax details/examples
+- The sidecar configuration can be modified through the `datadog_sidecar` variable, for example to modify the cpu/memory of the sidecar.
+
+### Datadog Variables
+
+The following Datadog variables can be set on application containers:
+
+| Variable                 | Purpose                                                                                                                                    | How to Set                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `DD_SERVICE`             | Enables [Unified Service Tagging](https://docs.datadoghq.com/tagging/unified_service_tagging/). Defaults to the Container App name.        | Set via the `datadog_service` parameter or per container in `template.container[*].env`.          |
+| `DD_SERVERLESS_LOG_PATH` | Used when logging is enabled (`datadog_enable_logging = true`). Is the path where logs are written and where the agent sidecar reads from. | Set via `datadog_logging_path`.                                                                   |
+| `DD_LOGS_INJECTION`      | Enables automatic correlation of logs and traces.                                                                                          | Set automatically if `datadog_enable_logging = true`, or manually in `template.container[*].env`. |
+| `DD_TRACE_ENABLED`       | Toggles APM tracing. Defaults to `true`.                                                                                                   | Leave unset to use the default, or override in `template.container[*].env`.                       |
+
+
+The following Datadog variables can be set for sidecar:
+
+| Variable                          | Purpose                                                                                   | How to Set                                                                         |
+| --------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `DD_SERVERLESS_LOG_PATH`          | Must match where the application containers write logs if logging is enabled.             | Automatically set via `datadog_logging_path` when `datadog_enable_logging = true`. |
+| `DD_SERVICE`                      | Used for Unified Service Tagging. Defaults to the Container App name.                     | Set via `datadog_service`.                                                         |
+| `DD_VERSION`                      | (Optional) Part of Unified Service Tagging (e.g., Git SHA or application version).        | Set via `datadog_version`.                                                         |
+| `DD_ENV`                          | (Optional) Part of Unified Service Tagging (e.g., `serverless`, `staging`).               | Set via `datadog_env`.                                                             |
+| `DD_SITE`                         | Target Datadog site (e.g., `datadoghq.com`, `datadoghq.eu`).                              | Set via `datadog_site`.                                                            |
+| `DD_API_KEY`                      | API key used by the Datadog agent to send telemetry.                                      | Set via `datadog_api_key`.                                                         |
+| `DD_HEALTH_PORT`                  | Port used by the sidecar’s startup probe. Defaults to `5555`.                             | Set via `datadog_sidecar.health_port`.                                             |
+| `DD_LOG_LEVEL`                    | (Optional) Controls log verbosity in Conatiner App logs (`TRACE`, `DEBUG`, `INFO`, etc.). | Set via `datadog_log_level`.                                                       |
+| Other agent environment variables | For advanced agent configuration.                                                         | Set via `datadog_sidecar.env`.                                                |
+
+
+
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
 
