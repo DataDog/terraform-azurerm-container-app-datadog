@@ -10,7 +10,7 @@ FROM golang:1.24-bookworm
 WORKDIR /app
 
 # ca-certificates is required for bookworm images
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates=20230311 && \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates=20230311+deb12u1 && \
     rm -rf /var/lib/apt/lists/*
 
 COPY go.mod go.sum ./

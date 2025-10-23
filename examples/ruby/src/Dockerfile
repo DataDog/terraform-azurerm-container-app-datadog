@@ -9,8 +9,8 @@ FROM ruby:3.3-slim
 
 # Install build dependencies and ca-certificates
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    ca-certificates \
+    build-essential=12.12 \
+    ca-certificates=20250419 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

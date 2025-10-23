@@ -28,8 +28,8 @@ az containerapp show -n "$env_name" -g "$rg_name" &>/dev/null || az containerapp
 if ! az acr show --name "$acr_name" &>/dev/null; then
     az acr create --name "$acr_name" --resource-group "$rg_name" --location eastus2 --sku Standard
     az acr update --name "$acr_name" --anonymous-pull-enabled
-    az acr login --name "$acr_name"
 fi
+az acr login --name "$acr_name"
 
 for runtime in *; do
     if [[ ! -d "$runtime" ]]; then
