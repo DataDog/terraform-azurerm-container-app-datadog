@@ -1,0 +1,9 @@
+{
+    "main": "main.js",
+    "dependencies": {
+        "dd-trace": "^5.73.0",
+        "express": "^5.1.0",
+        "helmet": "^8.1.0",
+        "winston": "^3.18.3"
+    }
+}

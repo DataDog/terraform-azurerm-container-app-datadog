@@ -88,16 +88,10 @@ variable "ingress" {
   type = object({
     allow_insecure_connections = optional(bool),
     client_certificate_mode    = optional(string),
-    custom_domain = list(object({
-      certificate_binding_type = string,
-      certificate_id           = string,
-      name                     = string
-    })),
-    exposed_port     = optional(number),
-    external_enabled = optional(bool),
-    fqdn             = string,
-    target_port      = number,
-    transport        = optional(string),
+    exposed_port               = optional(number),
+    external_enabled           = optional(bool),
+    target_port                = number,
+    transport                  = optional(string),
     cors = optional(object({
       allow_credentials_enabled = optional(bool),
       allowed_headers           = optional(list(string)),

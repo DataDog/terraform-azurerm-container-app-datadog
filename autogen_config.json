@@ -20,6 +20,9 @@
             "template.container.readiness_probe.path",
             "template.container.startup_probe.path"
         ],
-        "never_allow": []
+        "never_allow": [
+            "ingress.fqdn",
+            "ingress.custom_domain"
+        ]
     }
 }

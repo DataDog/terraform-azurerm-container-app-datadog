@@ -1,0 +1,6 @@
+rulesets:
+  - docker-best-practices:
+    rules:
+      only-use-allowed-registry:
+        ignore:
+          - "**"
