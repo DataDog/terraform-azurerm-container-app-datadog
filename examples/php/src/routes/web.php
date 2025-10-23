@@ -16,7 +16,6 @@ $resolvedLogPath = ($envLogPath !== false && $envLogPath !== '')
    ? str_replace('*.log', 'app.log', $envLogPath)
    : '/shared-volume/logs/app.log';
 define('LOG_FILE', $resolvedLogPath);
-echo 'LOG_FILE: ' . LOG_FILE . PHP_EOL;
 
 // Create directory if it doesn't exist
 if (!is_dir(dirname(LOG_FILE))) {
