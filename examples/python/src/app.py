@@ -3,11 +3,11 @@
 
 import os
 import logging
-import datadog
+from datadog import initialize, statsd
 from ddtrace import tracer
 from flask import Flask
 
-datadog.initialize(
+initialize(
     statsd_host="127.0.0.1",
     statsd_port=8125,
 )
@@ -28,9 +28,9 @@ logging.basicConfig(level=logging.INFO, filename=log_filename)
 logger = logging.getLogger(__name__)
 
 @app.route("/")
-@tracer.wrap(service="cloudrun-tf-python-hello", resource="wrapper-module-test")
+@tracer.wrap(service="tf-python-hello", resource="wrapper-module-test")
 def hello_world():
-    datadog.statsd.distribution("cloudrun-py-sample-metric", 1)
+    statsd.count("python-sample-metric", 1)
     logger.info("Hello Datadog logger using Python!")
     return f"Hello Python World!"
 
