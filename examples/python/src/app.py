@@ -3,11 +3,11 @@
 
 import os
 import logging
-from datadog import initialize, statsd
+import datadog
 from ddtrace import tracer
 from flask import Flask
 
-initialize(
+datadog.initialize(
     statsd_host="127.0.0.1",
     statsd_port=8125,
 )
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 @app.route("/")
 @tracer.wrap(service="tf-python-hello", resource="wrapper-module-test")
 def hello_world():
-    statsd.count("python-sample-metric", 1)
+    datadog.statsd.distribution("python-sample-metric", 1)
     logger.info("Hello Datadog logger using Python!")
     return f"Hello Python World!"
 
