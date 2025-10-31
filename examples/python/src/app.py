@@ -28,9 +28,9 @@ logging.basicConfig(level=logging.INFO, filename=log_filename)
 logger = logging.getLogger(__name__)
 
 @app.route("/")
-@tracer.wrap(service="cloudrun-tf-python-hello", resource="wrapper-module-test")
+@tracer.wrap(service="tf-python-hello", resource="wrapper-module-test")
 def hello_world():
-    datadog.statsd.distribution("cloudrun-py-sample-metric", 1)
+    datadog.statsd.distribution("python-sample-metric", 1)
     logger.info("Hello Datadog logger using Python!")
     return f"Hello Python World!"
 
