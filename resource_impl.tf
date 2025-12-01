@@ -87,8 +87,10 @@ resource "azurerm_container_app" "this" {
     }
   }
   template {
+    cooldown_period_in_seconds       = try(var.template.cooldown_period_in_seconds, null)
     max_replicas                     = try(var.template.max_replicas, null)
     min_replicas                     = try(var.template.min_replicas, null)
+    polling_interval_in_seconds      = try(var.template.polling_interval_in_seconds, null)
     revision_suffix                  = try(var.template.revision_suffix, null)
     termination_grace_period_seconds = try(var.template.termination_grace_period_seconds, null)
     dynamic "azure_queue_scale_rule" {
