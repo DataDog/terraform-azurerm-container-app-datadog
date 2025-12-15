@@ -147,8 +147,10 @@ DESCRIPTION
 
 variable "template" {
   type = object({
+    cooldown_period_in_seconds       = optional(number),
     max_replicas                     = optional(number),
     min_replicas                     = optional(number),
+    polling_interval_in_seconds      = optional(number),
     revision_suffix                  = optional(string),
     termination_grace_period_seconds = optional(number),
     azure_queue_scale_rule = optional(list(object({
