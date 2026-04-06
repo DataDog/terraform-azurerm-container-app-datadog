@@ -1,3 +1,3 @@
 datadog==0.52.1
-ddtrace==3.19.7
+ddtrace==4.6.5
 Flask==3.1.3
