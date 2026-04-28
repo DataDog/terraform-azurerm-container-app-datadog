@@ -225,6 +225,7 @@ variable "template" {
     })),
     custom_scale_rule = optional(list(object({
       custom_rule_type = string,
+      identity_id      = optional(string),
       metadata         = map(string),
       name             = string,
       authentication = optional(list(object({

@@ -200,6 +200,7 @@ resource "azurerm_container_app" "this" {
       for_each = try(var.template.custom_scale_rule, null) != null ? var.template.custom_scale_rule : []
       content {
         custom_rule_type = custom_scale_rule.value.custom_rule_type
+        identity_id      = try(custom_scale_rule.value.identity_id, null)
         metadata         = custom_scale_rule.value.metadata
         name             = custom_scale_rule.value.name
         dynamic "authentication" {
