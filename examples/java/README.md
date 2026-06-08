@@ -1,13 +1,16 @@
-# Java Container App Example
+# Java Container App with Datadog Example
 
-This example demonstrates how to deploy a Java Spring Boot application to Azure Container Apps.
+This example demonstrates how to deploy a Java Spring Boot application to Azure Container Apps with Datadog monitoring enabled.
 
 ## What This Example Does
 
 This example deploys a simple Java Spring Boot web server that:
 - Listens on port 8080
 - Exposes a single endpoint at `/` that returns "Hello Java World!"
-- Logs each request in JSON format to stdout and the shared log volume using Logback
+- Integrates with Datadog for APM tracing and logging
+- Uses the Datadog Java tracer (`dd-java-agent`) for distributed tracing
+- Writes structured JSON logs using Logback to a shared volume for log collection
+- Automatically correlates logs with traces using trace and span IDs
 
 ## Prerequisites
 
@@ -17,6 +20,7 @@ This example deploys a simple Java Spring Boot web server that:
 - An Azure resource group
 - An Azure Container App environment
 - An Azure Container Registry
+- A Datadog API key
 
 ## Usage
 
@@ -25,6 +29,7 @@ This example deploys a simple Java Spring Boot web server that:
 Create a `terraform.tfvars` file with the following contents:
 
 ```tfvars
+datadog_api_key     = "your-datadog-api-key"
 name                = "my-java-app"
 resource_group_name = "my-resource-group"
 subscription_id     = "00000000-0000-0000-0000-000000000000"
@@ -47,7 +52,14 @@ terraform apply -auto-approve
 
 ### 4. Access the Application
 
-After deployment, Terraform will output the application URL (`app_url`). Visit the URL to see the "Hello Java World!" message.
+After deployment, Terraform will output the application URL. Visit the URL to see the "Hello Java World!" message.
+
+## Monitoring in Datadog
+
+Once deployed, you can view the following in your Datadog account:
+- **APM Traces**: Distributed traces for HTTP requests with automatic instrumentation
+- **Logs**: Application logs with trace correlation (trace ID and span ID automatically injected via the Datadog Java tracer)
+- **Infrastructure**: Container metrics and resource usage
 
 ## Cleanup
 
@@ -60,31 +72,23 @@ terraform destroy -auto-approve
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
 
-| Name | Version |
-|------|---------|
-| <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | >= 4.70.0 |
+No requirements.
 
 ## Modules
 
 | Name | Source | Version |
 |------|--------|---------|
-| <a name="module_container_app"></a> [container\_app](#module\_container\_app) | DataDog/container-app-datadog/azurerm | ~> 1.1 |
+| <a name="module_example_container_app"></a> [example\_container\_app](#module\_example\_container\_app) | ../../ | n/a |
 
 ## Resources
 
-| Name | Type |
-|------|------|
-| [azurerm_client_config.current](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/client_config) | data source |
+No resources.
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_datadog_api_key"></a> [datadog\_api\_key](#input\_datadog\_api\_key) | n/a | `string` | n/a | yes |
-| <a name="input_datadog_env"></a> [datadog\_env](#input\_datadog\_env) | n/a | `string` | n/a | yes |
-| <a name="input_datadog_service"></a> [datadog\_service](#input\_datadog\_service) | n/a | `string` | n/a | yes |
-| <a name="input_datadog_site"></a> [datadog\_site](#input\_datadog\_site) | n/a | `string` | `"datadoghq.com"` | no |
-| <a name="input_datadog_version"></a> [datadog\_version](#input\_datadog\_version) | n/a | `string` | `"1.0.0"` | no |
 | <a name="input_environment_name"></a> [environment\_name](#input\_environment\_name) | n/a | `string` | n/a | yes |
 | <a name="input_image"></a> [image](#input\_image) | n/a | `string` | n/a | yes |
 | <a name="input_name"></a> [name](#input\_name) | n/a | `string` | n/a | yes |
@@ -93,7 +97,5 @@ terraform destroy -auto-approve
 
 ## Outputs
 
-| Name | Description |
-|------|-------------|
-| <a name="output_app_url"></a> [app\_url](#output\_app\_url) | The public URL of the Container App. |
+No outputs.
 <!-- END_TF_DOCS -->

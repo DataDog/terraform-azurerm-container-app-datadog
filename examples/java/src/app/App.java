@@ -10,11 +10,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-
 @SpringBootApplication
 @RestController
 public class App {
@@ -26,21 +21,7 @@ public class App {
 
     @GetMapping("/")
     public String helloWorld() {
-        logger.info("Hello logger using Java!");
-        sendDistribution("java.example.requests", 1, "endpoint:root");
+        logger.info("Hello Datadog logger using Java!");
         return "Hello Java World!";
-    }
-
-    // Minimal DogStatsD client - the serverless-init sidecar listens on UDP 8125.
-    // Serverless only supports the distribution metric type.
-    private void sendDistribution(String metric, double value, String tags) {
-        try (DatagramSocket socket = new DatagramSocket()) {
-            byte[] payload = (metric + ":" + value + "|d|#" + tags).getBytes();
-            DatagramPacket packet = new DatagramPacket(
-                    payload, payload.length, InetAddress.getByName("127.0.0.1"), 8125);
-            socket.send(packet);
-        } catch (IOException e) {
-            // best-effort metric emission
-        }
     }
 }

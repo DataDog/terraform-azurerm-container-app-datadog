@@ -6,9 +6,9 @@
     <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
   </appender>
 
-  <!-- The Datadog sidecar tails log files from the shared volume (DD_SERVERLESS_LOG_PATH). -->
+  <!-- Write logs to shared volume for Datadog log collection. -->
   <appender name="FILE" class="ch.qos.logback.core.FileAppender">
-    <file>/shared-volume/logs/app.log</file>
+    <file>${DD_SERVERLESS_LOG_PATH:-/shared-volume/logs/app.log}</file>
     <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
   </appender>
 

@@ -13,15 +13,19 @@ RUN mvn package -q -DskipTests
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Download the Datadog Java tracer for automatic instrumentation (APM).
-# The tracer is enabled via JAVA_TOOL_OPTIONS set on the container app.
-ADD https://dtdg.co/latest-java-tracer agent.jar
+# Install Datadog tracer (pinned for reproducible builds)
+ARG DD_TRACER_VERSION=1.63.0
+RUN curl -fsSL -o agent.jar \
+    "https://repo1.maven.org/maven2/com/datadoghq/dd-java-agent/${DD_TRACER_VERSION}/dd-java-agent-${DD_TRACER_VERSION}.jar"
 COPY --from=build /app/target/*.jar app.jar
 
 ENV PORT=8080
 EXPOSE 8080
+
+# Datadog automatic instrumentation environment variable
+ENV JAVA_TOOL_OPTIONS="-javaagent:/app/agent.jar"
 
 CMD ["java", "-jar", "app.jar"]
