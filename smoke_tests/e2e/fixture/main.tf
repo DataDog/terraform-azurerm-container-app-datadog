@@ -53,7 +53,7 @@ module "instrumented" {
   resource_group_name          = var.resource_group_name
   container_app_environment_id = var.container_app_environment_id
   revision_mode                = "Single"
-  workload_profile_name        = "Consumption"
+  workload_profile_name        = var.workload_profile_name
   tags                         = local.freshness_tags
 
   datadog_api_key = var.datadog_api_key
@@ -85,7 +85,7 @@ resource "azurerm_container_app" "plain" {
   resource_group_name          = var.resource_group_name
   container_app_environment_id = var.container_app_environment_id
   revision_mode                = "Single"
-  workload_profile_name        = "Consumption"
+  workload_profile_name        = var.workload_profile_name
   tags                         = local.freshness_tags
 
   dynamic "registry" {

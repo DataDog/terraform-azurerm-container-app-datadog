@@ -64,6 +64,7 @@ func getContainerApp(t *testing.T, subscriptionID, resourceGroup, name string) c
 		"--resource-group", resourceGroup,
 		"--name", name,
 		"--output", "json",
+		"--only-show-errors", // suppress the extension-altered-behavior warning that would corrupt JSON
 	)
 	require.NoErrorf(t, err, "az containerapp show failed: %s", out)
 
