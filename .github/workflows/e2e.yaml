@@ -44,9 +44,11 @@ jobs:
       contents: read
       id-token: write # required for Azure OIDC federation
     env:
-      # The test self-skips when no instrumentation-relevant files changed, so the
-      # job is always green and required-check friendly.
-      SKIP_CONTAINER_APP_E2E_TESTS: ${{ needs.changes.outputs.should_run != 'true' }}
+      # Run for real only when instrumentation-relevant files changed AND this repo's
+      # OIDC federation is provisioned (AZURE_CLIENT_ID_E2E set). Otherwise the test
+      # self-skips, so the job is green and required-check friendly -- including on
+      # forks and before SECENG wires the repo variables/secrets.
+      SKIP_CONTAINER_APP_E2E_TESTS: ${{ !(needs.changes.outputs.should_run == 'true' && vars.AZURE_CLIENT_ID_E2E != '') }}
       AZURE_EXTENSION_USE_DYNAMIC_INSTALL: yes_without_prompt
     steps:
       - name: Checkout code
@@ -65,7 +67,7 @@ jobs:
           terraform_wrapper: false # Terratest parses raw terraform output
 
       - name: Azure login (OIDC)
-        if: needs.changes.outputs.should_run == 'true'
+        if: needs.changes.outputs.should_run == 'true' && vars.AZURE_CLIENT_ID_E2E != ''
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID_E2E }}
