@@ -47,8 +47,10 @@ func datadogContext(apiKey, appKey, site string) context.Context {
 	return context.WithValue(ctx, datadog.ContextServerVariables, map[string]string{"site": site})
 }
 
-// pollUntilFound polls query on a bounded budget until it returns at least one item.
-func pollUntilFound(t *testing.T, label string, query func() (int, error)) {
+// pollUntilFound polls query on a bounded budget until it returns at least one item,
+// returning an error if the budget is exhausted. It must be safe to call off the test
+// goroutine, so it logs progress but never calls require/FailNow itself.
+func pollUntilFound(t *testing.T, label string, query func() (int, error)) error {
 	t.Helper()
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		t.Logf("[%s] attempt %d/%d", label, attempt, maxAttempts)
@@ -58,18 +60,19 @@ func pollUntilFound(t *testing.T, label string, query func() (int, error)) {
 		} else if count > 0 {
 			t.Logf("[%s] found %d item(s)", label, count)
 
-			return
+			return nil
 		}
 		if attempt < maxAttempts {
 			time.Sleep(pollInterval)
 		}
 	}
-	require.Failf(t, "telemetry not found",
-		"[%s] timed out after %d attempts (%s)", label, maxAttempts, time.Duration(maxAttempts)*pollInterval)
+
+	return fmt.Errorf("[%s] timed out after %d attempts (%s)", label, maxAttempts, time.Duration(maxAttempts)*pollInterval)
 }
 
 // checkTelemetryFlowing asserts that both traces and logs carrying this run's identity
-// reach Datadog. Spans and logs are polled concurrently on the same budget.
+// reach Datadog. Spans and logs are polled concurrently on the same budget; the polls
+// run off the test goroutine, so their results are asserted back on it.
 func checkTelemetryFlowing(t *testing.T, apiKey, appKey, site string, id identity) {
 	t.Helper()
 	ctx := datadogContext(apiKey, appKey, site)
@@ -80,17 +83,21 @@ func checkTelemetryFlowing(t *testing.T, apiKey, appKey, site string, id identit
 	spansAPI := datadogV2.NewSpansApi(client)
 	logsAPI := datadogV2.NewLogsApi(client)
 
-	done := make(chan struct{}, 2)
+	type result struct {
+		label string
+		err   error
+	}
+	results := make(chan result, 2)
 	go func() {
-		defer func() { done <- struct{}{} }()
-		pollUntilFound(t, "spans", func() (int, error) { return querySpans(ctx, spansAPI, query) })
+		results <- result{"spans", pollUntilFound(t, "spans", func() (int, error) { return querySpans(ctx, spansAPI, query) })}
 	}()
 	go func() {
-		defer func() { done <- struct{}{} }()
-		pollUntilFound(t, "logs", func() (int, error) { return queryLogs(ctx, logsAPI, query) })
+		results <- result{"logs", pollUntilFound(t, "logs", func() (int, error) { return queryLogs(ctx, logsAPI, query) })}
 	}()
-	<-done
-	<-done
+	for i := 0; i < 2; i++ {
+		r := <-results
+		require.NoErrorf(t, r.err, "telemetry: %s did not flow", r.label)
+	}
 }
 
 func querySpans(ctx context.Context, api *datadogV2.SpansApi, query string) (int, error) {

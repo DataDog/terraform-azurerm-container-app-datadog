@@ -27,6 +27,12 @@ variable "name" {
   description = "Container App name. Must follow the one-e2e-<tool>-<platform>-<runid> hygiene convention."
 }
 
+variable "workload_profile_name" {
+  type        = string
+  default     = null
+  description = "Workload profile to place the app in. Must be null for Consumption-Only environments."
+}
+
 variable "workload_image" {
   type        = string
   nullable    = false

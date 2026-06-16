@@ -60,13 +60,21 @@ az extension add --name containerapp  # one-time
 | `DATADOG_APP_KEY` | yes | Datadog application key (telemetry query) |
 | `DD_SITE` | no | Datadog site (default `datadoghq.com`) |
 | `E2E_WORKLOAD_IMAGE` | no | Prebuilt prod workload image (default: the `ddselfmonitoringprod` Node sidecar-flavor image) |
-| `E2E_SERVERLESS_INIT_IMAGE` | no | Pinned `serverless-init` sidecar image (default `index.docker.io/datadog/serverless-init:3`) |
-| `E2E_ACR_SERVER` / `E2E_ACR_USERNAME` / `E2E_ACR_PASSWORD` | if private | Registry creds so the Container App can pull the workload image |
+| `E2E_SERVERLESS_INIT_IMAGE` | no | Pinned `serverless-init` sidecar image (default `index.docker.io/datadog/serverless-init:1.9.15`) |
+| `E2E_ACR_SERVER` / `E2E_ACR_USERNAME` / `E2E_ACR_PASSWORD` | if private | Registry creds so the Container App can pull a private workload image |
 | `SKIP_CONTAINER_APP_E2E_TESTS` | no | Set `true` to skip the suite |
 
-The default workload image lives in the private `ddselfmonitoringprod` ACR; set the
-`E2E_ACR_*` credentials (or point `E2E_WORKLOAD_IMAGE` at a public image) so the
-Container App can pull it.
+The default `E2E_WORKLOAD_IMAGE` lives in the private `ddselfmonitoringprod` ACR. The
+ephemeral Container App needs to pull it, so either:
+
+- point `E2E_WORKLOAD_IMAGE` at an **anonymous-pull mirror** (what CI does --
+  `dde2etfcapp.azurecr.io/self-monitoring-container-app-node-sidecar-prod:latest`, no
+  credentials), or
+- supply `E2E_ACR_*` registry credentials for the private source.
+
+(Why a mirror rather than registry creds: the module's `secret` input can't carry a
+registry password today -- a pre-existing typing bug makes the secret block's `for_each`
+reject more than one secret -- so the suite avoids that path entirely.)
 
 ### Run
 
@@ -84,15 +92,17 @@ otherwise it sets `SKIP_CONTAINER_APP_E2E_TESTS=true` so the test self-skips and
 required check stays green -- on forks and before the infra is wired. Azure auth uses
 GitHub → Azure OIDC federation (`azure/login`).
 
-### Provisioning the CI infra (one-time, per repo)
+### CI infra (provisioned)
 
-Until these are set, the job stays green by self-skipping. To enable real runs, wire a
-service principal with a federated credential for subject
-`repo:DataDog/terraform-azurerm-container-app-datadog:*` and configure
-([setup guide](https://github.com/DataDog/serverless-ci/blob/main/e2e/setup/azure/container-app/README.md)):
+The OIDC federation and config are already wired for this repo (see the IAM catalog in
+`serverless-ci/e2e/iam-infra.md`). The job runs for real on PRs that touch the module or
+suite, authenticating via a service principal federated to
+`repo:DataDog/terraform-azurerm-container-app-datadog:*` with `Contributor` on the
+`datadog-ci-e2e` resource group.
 
 - **Repo variables:** `AZURE_CLIENT_ID_E2E`, `AZURE_TENANT_ID_E2E`,
   `AZURE_SUBSCRIPTION_ID_E2E`, `AZURE_RESOURCE_GROUP_E2E`, `AZURE_CONTAINER_APP_ENV_E2E`,
-  `DD_SITE_E2E`, `E2E_WORKLOAD_IMAGE`, `E2E_SERVERLESS_INIT_IMAGE`, `E2E_ACR_SERVER`,
-  `E2E_ACR_USERNAME`
-- **Repo secrets:** `DATADOG_API_KEY_E2E`, `DATADOG_APP_KEY_E2E`, `E2E_ACR_PASSWORD`
+  `DD_SITE_E2E`, `E2E_WORKLOAD_IMAGE` (the anonymous-pull mirror), `E2E_SERVERLESS_INIT_IMAGE`
+- **Repo secrets:** `DATADOG_API_KEY_E2E`, `DATADOG_APP_KEY_E2E`
+
+`E2E_ACR_*` are unset because the workload image is pulled from an anonymous-pull mirror.

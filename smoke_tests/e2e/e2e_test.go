@@ -26,7 +26,7 @@ const (
 	defaultWorkloadImage = "ddselfmonitoringprod.azurecr.io/self-monitoring-container-app-node-sidecar-prod:latest"
 
 	// Pinned Datadog artifact so a pass/fail blames this module, not upstream.
-	defaultServerlessInitImage = "index.docker.io/datadog/serverless-init:3"
+	defaultServerlessInitImage = "index.docker.io/datadog/serverless-init:1.9.15"
 )
 
 // TestContainerAppE2E exercises the full instrumentation lifecycle against a real
@@ -71,7 +71,6 @@ func TestContainerAppE2E(t *testing.T) {
 			"container_app_environment_id": environmentID,
 			"name":                         name,
 			"workload_image":               getEnv("E2E_WORKLOAD_IMAGE", defaultWorkloadImage),
-			"datadog_api_key":              apiKey,
 			"datadog_site":                 site,
 			"datadog_service":              id.service,
 			"datadog_env":                  id.env,
@@ -81,7 +80,12 @@ func TestContainerAppE2E(t *testing.T) {
 			"serverless_init_image":        id.sidecarImage,
 			"registry_server":              os.Getenv("E2E_ACR_SERVER"),
 			"registry_username":            os.Getenv("E2E_ACR_USERNAME"),
-			"registry_password":            os.Getenv("E2E_ACR_PASSWORD"),
+		},
+		// Secrets go through TF_VAR_* env vars, not -var, so Terratest never echoes
+		// them into the (CI) logs.
+		EnvVars: map[string]string{
+			"TF_VAR_datadog_api_key":   apiKey,
+			"TF_VAR_registry_password": os.Getenv("E2E_ACR_PASSWORD"),
 		},
 		RetryableTerraformErrors: retryableTerraformErrors,
 		MaxRetries:               3,
@@ -92,12 +96,23 @@ func TestContainerAppE2E(t *testing.T) {
 	// Teardown always, even on failure or panic.
 	defer terraform.Destroy(t, opts)
 
-	// 1. Provision the uninstrumented workload.
-	terraform.InitAndApply(t, opts)
+	// The instrumented app (module-managed) and the uninstrumented app (a plain
+	// resource) share one Azure name but are distinct Terraform addresses, so a flip
+	// can't be a single in-place apply -- Terraform would create the replacement while
+	// the old one still exists ("already exists"). Each transition therefore destroys
+	// the current resource before creating the next.
+	setMode := func(instrument bool) {
+		opts.Vars["instrument"] = instrument
+		terraform.Apply(t, opts)
+	}
 
-	// 2. APPLY: instrument, then verify config.
-	opts.Vars["instrument"] = true
-	terraform.Apply(t, opts)
+	// 1. Provision the uninstrumented workload; confirm it starts clean.
+	terraform.InitAndApply(t, opts) // instrument=false
+	verifyUninstrumented(t, getContainerApp(t, subscriptionID, resourceGroup, name))
+
+	// 2. APPLY: instrument (destroy baseline first to free the name), then verify config.
+	terraform.Destroy(t, opts) // instrument=false -> remove the plain app
+	setMode(true)
 	verifyInstrumented(t, getContainerApp(t, subscriptionID, resourceGroup, name), id)
 
 	// 3. Trigger the workload over HTTP.
@@ -112,9 +127,9 @@ func TestContainerAppE2E(t *testing.T) {
 	terraform.Apply(t, opts)
 	require.Equal(t, 0, terraform.PlanExitCode(t, opts), "re-apply should be a no-op (no diff)")
 
-	// 6. REMOVE: drop the module wrapper, then verify the clean end-state.
-	opts.Vars["instrument"] = false
-	terraform.Apply(t, opts)
+	// 6. REMOVE: drop the module wrapper (back to the plain app), then verify clean.
+	terraform.Destroy(t, opts) // instrument=true -> remove the instrumented app
+	setMode(false)
 	verifyUninstrumented(t, getContainerApp(t, subscriptionID, resourceGroup, name))
 }
 
