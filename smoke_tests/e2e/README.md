@@ -78,8 +78,21 @@ go test -v -timeout 45m ./...
 ## CI
 
 `.github/workflows/e2e.yaml` runs the suite on PRs behind a path filter (module
-sources + `smoke_tests/e2e/`). When nothing relevant changed it sets
-`SKIP_CONTAINER_APP_E2E_TESTS=true` so the test self-skips and the required check
-stays green. Azure auth uses GitHub → Azure OIDC federation (`azure/login`); the
-`AZURE_*_E2E` / `DATADOG_*_E2E` / `E2E_ACR_*` values come from repo
-[variables and secrets](https://github.com/DataDog/serverless-ci/blob/main/e2e/setup/azure/container-app/README.md).
+sources + `smoke_tests/e2e/`). It runs for real only when both the path filter matches
+**and** this repo's OIDC federation is provisioned (`AZURE_CLIENT_ID_E2E` is set);
+otherwise it sets `SKIP_CONTAINER_APP_E2E_TESTS=true` so the test self-skips and the
+required check stays green -- on forks and before the infra is wired. Azure auth uses
+GitHub → Azure OIDC federation (`azure/login`).
+
+### Provisioning the CI infra (one-time, per repo)
+
+Until these are set, the job stays green by self-skipping. To enable real runs, wire a
+service principal with a federated credential for subject
+`repo:DataDog/terraform-azurerm-container-app-datadog:*` and configure
+([setup guide](https://github.com/DataDog/serverless-ci/blob/main/e2e/setup/azure/container-app/README.md)):
+
+- **Repo variables:** `AZURE_CLIENT_ID_E2E`, `AZURE_TENANT_ID_E2E`,
+  `AZURE_SUBSCRIPTION_ID_E2E`, `AZURE_RESOURCE_GROUP_E2E`, `AZURE_CONTAINER_APP_ENV_E2E`,
+  `DD_SITE_E2E`, `E2E_WORKLOAD_IMAGE`, `E2E_SERVERLESS_INIT_IMAGE`, `E2E_ACR_SERVER`,
+  `E2E_ACR_USERNAME`
+- **Repo secrets:** `DATADOG_API_KEY_E2E`, `DATADOG_APP_KEY_E2E`, `E2E_ACR_PASSWORD`
