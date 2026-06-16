@@ -16,7 +16,7 @@ import (
 
 const (
 	pollInterval = 15 * time.Second
-	maxAttempts  = 20
+	maxAttempts  = 24 // 6 min; spans index slower than logs and an occasional 429 costs an attempt
 	lookback     = 15 * time.Minute
 )
 
@@ -32,10 +32,15 @@ type identity struct {
 	sidecarImage string
 }
 
-// telemetryQuery builds a filter that pins every identifying facet at once: service,
-// env, version, and the unique run-id tag. Anything it returns is provably this run's.
+// telemetryQuery pins the identifying facets that the module controls and that ride onto
+// both traces and logs: the unique service, env, and the unique run-id tag. Anything it
+// returns is provably this run's telemetry (assert identity, not existence). version is
+// deliberately omitted -- the resource/env-var version is asserted in config
+// verification, but whether the per-runtime tracer stamps `version` onto spans is
+// upstream-owned (the spec scopes tracer tag propagation out), and the Node tracer does
+// not, so requiring it here would assert an upstream behavior, not the module's wiring.
 func (id identity) telemetryQuery() string {
-	return fmt.Sprintf("service:%s env:%s version:%s %s", id.service, id.env, id.version, id.runTag)
+	return fmt.Sprintf("service:%s env:%s %s", id.service, id.env, id.runTag)
 }
 
 func datadogContext(apiKey, appKey, site string) context.Context {
