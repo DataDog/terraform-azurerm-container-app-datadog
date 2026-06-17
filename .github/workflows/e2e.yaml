@@ -62,11 +62,10 @@ jobs:
       contents: read
       id-token: write # required for Azure OIDC federation
     env:
-      # Run for real only when instrumentation-relevant files changed AND this repo's
-      # OIDC federation is provisioned (AZURE_CLIENT_ID_E2E set). Otherwise the test
-      # self-skips, so the job is green and required-check friendly -- including on
-      # forks and before SECENG wires the repo variables/secrets.
-      SKIP_CONTAINER_APP_E2E_TESTS: ${{ !(needs.changes.outputs.should_run == 'true' && vars.AZURE_CLIENT_ID_E2E != '') }}
+      # Run for real whenever instrumentation-relevant files changed. The Azure OIDC /
+      # dd-sts steps must succeed in that case -- an auth/federation failure fails the
+      # job loudly rather than self-skipping green.
+      SKIP_CONTAINER_APP_E2E_TESTS: ${{ needs.changes.outputs.should_run != 'true' }}
       AZURE_EXTENSION_USE_DYNAMIC_INSTALL: yes_without_prompt
     steps:
       - name: Checkout code
@@ -85,7 +84,7 @@ jobs:
           terraform_wrapper: false # Terratest parses raw terraform output
 
       - name: Azure login (OIDC)
-        if: needs.changes.outputs.should_run == 'true' && vars.AZURE_CLIENT_ID_E2E != ''
+        if: needs.changes.outputs.should_run == 'true'
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID_E2E }}
@@ -94,7 +93,7 @@ jobs:
 
       - name: Get Datadog credentials (dd-sts)
         id: dd-sts
-        if: needs.changes.outputs.should_run == 'true' && vars.AZURE_CLIENT_ID_E2E != ''
+        if: needs.changes.outputs.should_run == 'true'
         uses: DataDog/dd-sts-action@2e8187910199bd93129520183c093e19aa585c75 # v1.0.0
         with:
           policy: terraform-azurerm-container-app-datadog-e2e
