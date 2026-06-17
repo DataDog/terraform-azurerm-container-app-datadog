@@ -86,10 +86,10 @@ go test -v -timeout 45m ./...
 ## CI
 
 `.github/workflows/e2e.yaml` runs the suite on PRs behind a path filter (module
-sources + `smoke_tests/e2e/`). It runs for real only when both the path filter matches
-**and** this repo's OIDC federation is provisioned (`AZURE_CLIENT_ID_E2E` is set);
-otherwise it sets `SKIP_CONTAINER_APP_E2E_TESTS=true` so the test self-skips and the
-required check stays green -- on forks and before the infra is wired. Azure auth uses
+sources + `smoke_tests/e2e/`). When the path filter matches, the suite runs for real and
+the Azure OIDC + dd-sts auth steps must succeed -- an auth or federation failure fails the
+job loudly rather than self-skipping green. When no relevant files change it sets
+`SKIP_CONTAINER_APP_E2E_TESTS=true` so the required check stays green. Azure auth uses
 GitHub → Azure OIDC federation (`azure/login`).
 
 ### CI infra (provisioned)
@@ -103,6 +103,8 @@ suite, authenticating via a service principal federated to
 - **Repo variables:** `AZURE_CLIENT_ID_E2E`, `AZURE_TENANT_ID_E2E`,
   `AZURE_SUBSCRIPTION_ID_E2E`, `AZURE_RESOURCE_GROUP_E2E`, `AZURE_CONTAINER_APP_ENV_E2E`,
   `DD_SITE_E2E`, `E2E_WORKLOAD_IMAGE` (the anonymous-pull mirror), `E2E_SERVERLESS_INIT_IMAGE`
-- **Repo secrets:** `DATADOG_API_KEY_E2E`, `DATADOG_APP_KEY_E2E`
+- **Datadog auth (dd-sts):** short-lived API + App keys minted at runtime via
+  [`DataDog/dd-sts-action`](https://github.com/DataDog/dd-sts-action) under the
+  `terraform-azurerm-container-app-datadog-e2e` policy -- no static Datadog keys in this repo.
 
 `E2E_ACR_*` are unset because the workload image is pulled from an anonymous-pull mirror.
