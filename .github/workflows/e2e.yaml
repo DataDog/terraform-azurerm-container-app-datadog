@@ -6,7 +6,25 @@ permissions:
 on:
   pull_request:
     paths:
-      - '**'
+      - 'main.tf'
+      - 'resource_impl.tf'
+      - 'resource_variables.tf'
+      - 'variables.tf'
+      - 'outputs.tf'
+      - 'versions.tf'
+      - 'smoke_tests/e2e/**'
+      - '.github/workflows/e2e.yaml'
+  push:
+    branches: [main]
+    paths:
+      - 'main.tf'
+      - 'resource_impl.tf'
+      - 'resource_variables.tf'
+      - 'variables.tf'
+      - 'outputs.tf'
+      - 'versions.tf'
+      - 'smoke_tests/e2e/**'
+      - '.github/workflows/e2e.yaml'
 
 concurrency:
   group: e2e-${{ github.ref }}
@@ -74,6 +92,13 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID_E2E }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID_E2E }}
 
+      - name: Get Datadog credentials (dd-sts)
+        id: dd-sts
+        if: needs.changes.outputs.should_run == 'true' && vars.AZURE_CLIENT_ID_E2E != ''
+        uses: DataDog/dd-sts-action@2e8187910199bd93129520183c093e19aa585c75 # v1.0.0
+        with:
+          policy: terraform-azurerm-container-app-datadog-e2e
+
       - name: Run e2e tests
         working-directory: smoke_tests/e2e
         run: go test -v -timeout 45m ./...
@@ -81,9 +106,9 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID_E2E }}
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_E2E }}
           AZURE_CONTAINER_APP_ENV: ${{ vars.AZURE_CONTAINER_APP_ENV_E2E }}
-          DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_E2E }}
-          DATADOG_APP_KEY: ${{ secrets.DATADOG_APP_KEY_E2E }}
-          DD_SITE: ${{ vars.DD_SITE_E2E }}
+          DATADOG_API_KEY: ${{ steps.dd-sts.outputs.api_key }}
+          DATADOG_APP_KEY: ${{ steps.dd-sts.outputs.app_key }}
+          DD_SITE: ${{ vars.DD_SITE_E2E || 'datadoghq.com' }}
           # Pinned artifacts (override the in-code defaults to bump versions).
           E2E_WORKLOAD_IMAGE: ${{ vars.E2E_WORKLOAD_IMAGE }}
           E2E_SERVERLESS_INIT_IMAGE: ${{ vars.E2E_SERVERLESS_INIT_IMAGE }}
