@@ -79,14 +79,14 @@ reject more than one secret -- so the suite avoids that path entirely.)
 ### Run
 
 ```bash
-cd smoke_tests/e2e
+cd e2e
 go test -v -timeout 45m ./...
 ```
 
 ## CI
 
 `.github/workflows/e2e.yaml` runs the suite on PRs behind a path filter (module
-sources + `smoke_tests/e2e/`). When the path filter matches, the suite runs for real and
+sources + `e2e/`). When the path filter matches, the suite runs for real and
 the Azure OIDC + dd-sts auth steps must succeed -- an auth or federation failure fails the
 job loudly rather than self-skipping green. When no relevant files change it sets
 `SKIP_CONTAINER_APP_E2E_TESTS=true` so the required check stays green. Azure auth uses
