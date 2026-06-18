@@ -78,9 +78,17 @@ reject more than one secret -- so the suite avoids that path entirely.)
 
 ### Run
 
-```bash
+The suite queries the Datadog Spans and Logs APIs via `DATADOG_API_KEY` /
+`DATADOG_APP_KEY`. Rather than paste static keys, use `dd-auth` to mint
+short-lived keys and inject them into a wrapped subprocess:
+
+```sh
 cd e2e
-go test -v -timeout 45m ./...
+# Datadog auth: dd-auth mints short-lived keys for the org -- no pasted keys.
+dd-auth --domain app.datadoghq.com -- bash -c '
+  export DATADOG_API_KEY="$DD_API_KEY" DATADOG_APP_KEY="$DD_APP_KEY"
+  go test -v -timeout 45m ./...
+'
 ```
 
 ## CI
