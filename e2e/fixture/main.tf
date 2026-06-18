@@ -47,7 +47,7 @@ locals {
 
 module "instrumented" {
   count  = var.instrument ? 1 : 0
-  source = "../../.."
+  source = "../.."
 
   name                         = var.name
   resource_group_name          = var.resource_group_name
