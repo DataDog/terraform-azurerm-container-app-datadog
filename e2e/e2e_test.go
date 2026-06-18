@@ -1,22 +1,33 @@
 // Unless explicitly stated otherwise all files in this repository are licensed under the Apache-2.0 License.
 // This product includes software developed at Datadog (https://www.datadoghq.com/) Copyright 2026 Datadog, Inc.
 
+// Package e2e exercises the full lifecycle of the container-app-datadog Terraform module
+// against a real Azure Container App and Datadog: provision an uninstrumented workload,
+// APPLY the module and verify config, trigger it and verify telemetry flows, re-APPLY for
+// idempotency, REMOVE and verify a clean end-state, then always tear down.
+//
+// See README.md for the auth and environment prerequisites. The suite is skipped unless
+// SKIP_CONTAINER_APP_E2E_TESTS is unset/false.
 package e2e
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/gruntwork-io/terratest/modules/terraform"
 	"github.com/stretchr/testify/require"
+
+	e2eshared "github.com/DataDog/terraform-azurerm-container-app-datadog/e2e/shared"
 )
 
-// Pinned identity for the run. service is the unique app name (carries the run id),
-// so ingested telemetry is uniquely attributable to this run.
+// Pinned identity for the run. service is the unique app name (carries the run id), so
+// ingested telemetry is uniquely attributable to this run.
 const (
 	fixtureEnv     = "e2e"
 	fixtureVersion = "1.0.0"
@@ -37,6 +48,7 @@ func TestContainerAppE2E(t *testing.T) {
 		t.Skip("SKIP_CONTAINER_APP_E2E_TESTS=true")
 	}
 
+	ctx := context.Background()
 	subscriptionID := requireEnv(t, "AZURE_SUBSCRIPTION_ID")
 	resourceGroup := requireEnv(t, "AZURE_RESOURCE_GROUP")
 	envName := requireEnv(t, "AZURE_CONTAINER_APP_ENV")
@@ -49,17 +61,20 @@ func TestContainerAppE2E(t *testing.T) {
 		subscriptionID, resourceGroup, envName,
 	)
 
-	runID := newRunID()
-	name := appName(runID)
-	createdTS := createdTimestamp()
-	id := identity{
-		service:      name,
-		env:          fixtureEnv,
-		version:      fixtureVersion,
-		runTag:       runIDTag(runID),
-		createdTS:    createdTS,
-		sidecarImage: getEnv("E2E_SERVERLESS_INIT_IMAGE", defaultServerlessInitImage),
+	runID := e2eshared.NewRunID()
+	name := e2eshared.ResourceName(sharedCfg, runID)
+	createdTS := strconv.FormatInt(time.Now().Unix(), 10)
+	runTag := fmt.Sprintf("%s:%s", e2eshared.DefaultRunIDTagKey, runID)
+	sidecarImage := getEnv("E2E_SERVERLESS_INIT_IMAGE", defaultServerlessInitImage)
+	exp := Expectations{
+		Service:      name,
+		Env:          fixtureEnv,
+		Version:      fixtureVersion,
+		RunID:        runID,
+		CreatedTS:    createdTS,
+		SidecarImage: sidecarImage,
 	}
+	telID := telemetryIdentity{service: name, env: fixtureEnv, runTag: runTag}
 	t.Logf("run id %s -> app %q", runID, name)
 
 	opts := &terraform.Options{
@@ -72,12 +87,12 @@ func TestContainerAppE2E(t *testing.T) {
 			"name":                         name,
 			"workload_image":               getEnv("E2E_WORKLOAD_IMAGE", defaultWorkloadImage),
 			"datadog_site":                 site,
-			"datadog_service":              id.service,
-			"datadog_env":                  id.env,
-			"datadog_version":              id.version,
-			"run_id_tag":                   id.runTag,
+			"datadog_service":              exp.Service,
+			"datadog_env":                  exp.Env,
+			"datadog_version":              exp.Version,
+			"run_id_tag":                   runTag,
 			"created_ts":                   createdTS,
-			"serverless_init_image":        id.sidecarImage,
+			"serverless_init_image":        sidecarImage,
 			"registry_server":              os.Getenv("E2E_ACR_SERVER"),
 			"registry_username":            os.Getenv("E2E_ACR_USERNAME"),
 		},
@@ -106,14 +121,21 @@ func TestContainerAppE2E(t *testing.T) {
 		terraform.Apply(t, opts)
 	}
 
+	mustGetApp := func() containerApp {
+		app, err := getContainerApp(ctx, subscriptionID, resourceGroup, name)
+		require.NoError(t, err)
+
+		return app
+	}
+
 	// 1. Provision the uninstrumented workload; confirm it starts clean.
 	terraform.InitAndApply(t, opts) // instrument=false
-	verifyUninstrumented(t, getContainerApp(t, subscriptionID, resourceGroup, name))
+	require.NoError(t, verifyUninstrumented(mustGetApp()))
 
 	// 2. APPLY: instrument (destroy baseline first to free the name), then verify config.
 	terraform.Destroy(t, opts) // instrument=false -> remove the plain app
 	setMode(true)
-	verifyInstrumented(t, getContainerApp(t, subscriptionID, resourceGroup, name), id)
+	require.NoError(t, verifyInstrumented(mustGetApp(), exp))
 
 	// 3. Trigger the workload over HTTP.
 	fqdn := terraform.Output(t, opts, "app_fqdn")
@@ -121,7 +143,7 @@ func TestContainerAppE2E(t *testing.T) {
 	triggerWorkload(t, fqdn)
 
 	// 4. Verify telemetry (traces + logs) flows, filtered by this run's identity.
-	checkTelemetryFlowing(t, apiKey, appKey, site, id)
+	checkTelemetryFlowing(t, ctx, site, apiKey, appKey, telID)
 
 	// 5. APPLY again: assert idempotent (no diff, no duplicate).
 	terraform.Apply(t, opts)
@@ -130,7 +152,32 @@ func TestContainerAppE2E(t *testing.T) {
 	// 6. REMOVE: drop the module wrapper (back to the plain app), then verify clean.
 	terraform.Destroy(t, opts) // instrument=true -> remove the instrumented app
 	setMode(false)
-	verifyUninstrumented(t, getContainerApp(t, subscriptionID, resourceGroup, name))
+	require.NoError(t, verifyUninstrumented(mustGetApp()))
+}
+
+// checkTelemetryFlowing asserts that both traces and logs carrying this run's identity
+// reach Datadog. Spans and logs are polled concurrently on the same budget; the polls
+// run off the test goroutine, so their results are asserted back on it.
+func checkTelemetryFlowing(t *testing.T, ctx context.Context, site, apiKey, appKey string, id telemetryIdentity) {
+	t.Helper()
+	client := e2eshared.NewTelemetryClient(site, apiKey, appKey)
+	t.Logf("polling Datadog (%s) for telemetry matching: %s", site, id.query())
+
+	type result struct {
+		label string
+		err   error
+	}
+	results := make(chan result, 2)
+	go func() {
+		results <- result{"spans", waitForTelemetry(ctx, "spans", client.SearchSpans, id)}
+	}()
+	go func() {
+		results <- result{"logs", waitForTelemetry(ctx, "logs", client.SearchLogs, id)}
+	}()
+	for i := 0; i < 2; i++ {
+		r := <-results
+		require.NoErrorf(t, r.err, "telemetry: %s did not flow", r.label)
+	}
 }
 
 // triggerWorkload issues HTTP GETs until the service answers (or the budget runs out),

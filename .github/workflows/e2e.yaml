@@ -12,7 +12,7 @@ on:
       - 'variables.tf'
       - 'outputs.tf'
       - 'versions.tf'
-      - 'smoke_tests/e2e/**'
+      - 'e2e/**'
       - '.github/workflows/e2e.yaml'
   push:
     branches: [main]
@@ -23,7 +23,7 @@ on:
       - 'variables.tf'
       - 'outputs.tf'
       - 'versions.tf'
-      - 'smoke_tests/e2e/**'
+      - 'e2e/**'
       - '.github/workflows/e2e.yaml'
 
 concurrency:
@@ -50,7 +50,7 @@ jobs:
               - 'variables.tf'
               - 'outputs.tf'
               - 'versions.tf'
-              - 'smoke_tests/e2e/**'
+              - 'e2e/**'
               - '.github/workflows/e2e.yaml'
 
   e2e:
@@ -74,8 +74,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version-file: smoke_tests/e2e/go.mod
-          cache-dependency-path: smoke_tests/e2e/go.sum
+          go-version-file: e2e/go.mod
+          cache-dependency-path: e2e/go.sum
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
@@ -99,7 +99,7 @@ jobs:
           policy: terraform-azurerm-container-app-datadog-e2e
 
       - name: Run e2e tests
-        working-directory: smoke_tests/e2e
+        working-directory: e2e
         run: go test -v -timeout 45m ./...
         env:
           AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID_E2E }}
