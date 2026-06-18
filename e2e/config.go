@@ -184,16 +184,6 @@ func (c caContainer) mounts(volumeName string) bool {
 	return false
 }
 
-func (c caContainer) envValue(name string) (string, bool) {
-	for _, e := range c.Env {
-		if e.Name == name {
-			return e.Value, true
-		}
-	}
-
-	return "", false
-}
-
 // envMap flattens a container's env vars into a map for the shared primitives.
 func (c caContainer) envMap() map[string]string {
 	m := make(map[string]string, len(c.Env))
