@@ -168,9 +168,9 @@ func checkTelemetryFlowing(t *testing.T, ctx context.Context, fqdn, site, apiKey
 	// attached sit behind the offset. Without fresh requests during the poll no new lines
 	// are forwarded and logs never arrive (spans are unaffected -- the tracer ships over
 	// HTTP). Stop once both polls return.
-	stopTraffic := make(chan struct{})
-	defer close(stopTraffic)
-	go generateTraffic("https://"+fqdn, stopTraffic)
+	tctx, stopTraffic := context.WithCancel(ctx)
+	defer stopTraffic()
+	go e2eshared.GenerateTraffic(tctx, "https://"+fqdn, 5*time.Second)
 
 	type result struct {
 		label string
@@ -215,35 +215,6 @@ func triggerWorkload(t *testing.T, fqdn string) {
 		time.Sleep(10 * time.Second)
 	}
 	require.Failf(t, "trigger failed", "workload at %s never answered", url)
-}
-
-// generateTraffic drives the workload on a steady cadence until stop is closed, so the
-// sidecar's file tailer (which reads from the end) always has fresh log lines to forward
-// while the telemetry poll runs. Best-effort: errors are ignored, the telemetry
-// assertions are what gate the test.
-func generateTraffic(url string, stop <-chan struct{}) {
-	client := &http.Client{
-		Timeout:   30 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
-	}
-	hit := func() {
-		resp, err := client.Get(url)
-		if err == nil {
-			resp.Body.Close()
-		}
-	}
-
-	hit() // don't wait a full interval to start producing logs
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-stop:
-			return
-		case <-ticker.C:
-			hit()
-		}
-	}
 }
 
 func requireEnv(t *testing.T, key string) string {
