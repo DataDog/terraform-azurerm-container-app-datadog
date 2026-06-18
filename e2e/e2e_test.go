@@ -143,7 +143,7 @@ func TestContainerAppE2E(t *testing.T) {
 	triggerWorkload(t, fqdn)
 
 	// 4. Verify telemetry (traces + logs) flows, filtered by this run's identity.
-	checkTelemetryFlowing(t, ctx, site, apiKey, appKey, telID)
+	checkTelemetryFlowing(t, ctx, fqdn, site, apiKey, appKey, telID)
 
 	// 5. APPLY again: assert idempotent (no diff, no duplicate).
 	terraform.Apply(t, opts)
@@ -158,10 +158,19 @@ func TestContainerAppE2E(t *testing.T) {
 // checkTelemetryFlowing asserts that both traces and logs carrying this run's identity
 // reach Datadog. Spans and logs are polled concurrently on the same budget; the polls
 // run off the test goroutine, so their results are asserted back on it.
-func checkTelemetryFlowing(t *testing.T, ctx context.Context, site, apiKey, appKey string, id telemetryIdentity) {
+func checkTelemetryFlowing(t *testing.T, ctx context.Context, fqdn, site, apiKey, appKey string, id telemetryIdentity) {
 	t.Helper()
 	client := e2eshared.NewTelemetryClient(site, apiKey, appKey)
 	t.Logf("polling Datadog (%s) for telemetry matching: %s", site, id.query())
+
+	// Drive continuous traffic for the duration of the poll: the serverless-init sidecar
+	// tails the shared-volume log file from the END, so lines written before its tailer
+	// attached sit behind the offset. Without fresh requests during the poll no new lines
+	// are forwarded and logs never arrive (spans are unaffected -- the tracer ships over
+	// HTTP). Stop once both polls return.
+	stopTraffic := make(chan struct{})
+	defer close(stopTraffic)
+	go generateTraffic("https://"+fqdn, stopTraffic)
 
 	type result struct {
 		label string
@@ -206,6 +215,35 @@ func triggerWorkload(t *testing.T, fqdn string) {
 		time.Sleep(10 * time.Second)
 	}
 	require.Failf(t, "trigger failed", "workload at %s never answered", url)
+}
+
+// generateTraffic drives the workload on a steady cadence until stop is closed, so the
+// sidecar's file tailer (which reads from the end) always has fresh log lines to forward
+// while the telemetry poll runs. Best-effort: errors are ignored, the telemetry
+// assertions are what gate the test.
+func generateTraffic(url string, stop <-chan struct{}) {
+	client := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
+	}
+	hit := func() {
+		resp, err := client.Get(url)
+		if err == nil {
+			resp.Body.Close()
+		}
+	}
+
+	hit() // don't wait a full interval to start producing logs
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			hit()
+		}
+	}
 }
 
 func requireEnv(t *testing.T, key string) string {
