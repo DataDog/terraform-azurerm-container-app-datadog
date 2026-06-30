@@ -1,15 +1,9 @@
 # Unless explicitly stated otherwise all files in this repository are licensed under the Apache-2.0 License.
 # This product includes software developed at Datadog (https://www.datadoghq.com/) Copyright 2026 Datadog, Inc.
 
-# E2E fixture: the SAME workload, deployed two ways under one name.
-#
-#   var.instrument = true  -> wrapped by this repo's Datadog module (instrumented).
-#   var.instrument = false -> a plain azurerm_container_app (uninstrumented baseline
-#                             and post-remove clean end-state).
-#
-# Flipping `instrument` replaces the app in place. The two resources share a name,
-# so a flip can briefly race a delete against a create; the Terratest driver retries
-# the apply on the resulting Conflict (see exec.go), per the spec's "retry the cloud".
+# E2E fixture: the workload defined through this repo's Datadog module (the tool under
+# test). APPLY creates the instrumented Container App from nothing; toggling
+# `var.instrument` off (REMOVE) destroys it, leaving a clean end-state (no app).
 
 locals {
   use_registry = var.registry_server != ""
@@ -75,53 +69,5 @@ module "instrumented" {
     min_replicas = 1
     max_replicas = 1
     container    = [local.workload_container]
-  }
-}
-
-resource "azurerm_container_app" "plain" {
-  count = var.instrument ? 0 : 1
-
-  name                         = var.name
-  resource_group_name          = var.resource_group_name
-  container_app_environment_id = var.container_app_environment_id
-  revision_mode                = "Single"
-  workload_profile_name        = var.workload_profile_name
-  tags                         = local.freshness_tags
-
-  dynamic "registry" {
-    for_each = local.registry == null ? [] : local.registry
-    content {
-      server               = registry.value.server
-      username             = registry.value.username
-      password_secret_name = registry.value.password_secret_name
-    }
-  }
-
-  dynamic "secret" {
-    for_each = local.registry_secret == null ? [] : local.registry_secret
-    content {
-      name  = secret.value.name
-      value = secret.value.value
-    }
-  }
-
-  ingress {
-    external_enabled = true
-    target_port      = local.ingress.target_port
-    traffic_weight {
-      percentage      = 100
-      latest_revision = true
-    }
-  }
-
-  template {
-    min_replicas = 1
-    max_replicas = 1
-    container {
-      cpu    = local.workload_container.cpu
-      memory = local.workload_container.memory
-      image  = local.workload_container.image
-      name   = local.workload_container.name
-    }
   }
 }
