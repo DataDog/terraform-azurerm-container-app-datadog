@@ -3,7 +3,7 @@
 
 variable "instrument" {
   type        = bool
-  description = "When true, the workload is wrapped by the Datadog module (instrumented). When false, the same workload is deployed as a plain azurerm_container_app (uninstrumented baseline / clean end-state)."
+  description = "When true, the workload is defined through the Datadog module (APPLY). When false, the module is removed and no app exists (REMOVE) -- the clean end-state."
 }
 
 variable "subscription_id" {
