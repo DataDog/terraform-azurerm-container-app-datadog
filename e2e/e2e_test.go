@@ -2,9 +2,9 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/) Copyright 2026 Datadog, Inc.
 
 // Package e2e exercises the full lifecycle of the container-app-datadog Terraform module
-// against a real Azure Container App and Datadog: provision an uninstrumented workload,
-// APPLY the module and verify config, trigger it and verify telemetry flows, re-APPLY for
-// idempotency, REMOVE and verify a clean end-state, then always tear down.
+// against a real Azure Container App and Datadog: APPLY the module and verify config,
+// trigger it and verify telemetry flows, re-APPLY for idempotency, REMOVE and verify the
+// app is gone, then always tear down.
 //
 // See README.md for the auth and environment prerequisites. The suite is skipped unless
 // SKIP_CONTAINER_APP_E2E_TESTS is unset/false.
@@ -41,8 +41,8 @@ const (
 )
 
 // TestContainerAppE2E exercises the full instrumentation lifecycle against a real
-// Azure Container App: provision uninstrumented -> instrument -> verify config ->
-// trigger -> verify telemetry -> re-apply (idempotent) -> remove -> verify clean.
+// Azure Container App: APPLY the module (from nothing) -> verify config -> trigger ->
+// verify telemetry -> re-apply (idempotent) -> remove -> verify the app is gone.
 func TestContainerAppE2E(t *testing.T) {
 	if os.Getenv("SKIP_CONTAINER_APP_E2E_TESTS") == "true" {
 		t.Skip("SKIP_CONTAINER_APP_E2E_TESTS=true")
@@ -80,7 +80,7 @@ func TestContainerAppE2E(t *testing.T) {
 	opts := &terraform.Options{
 		TerraformDir: "fixture",
 		Vars: map[string]interface{}{
-			"instrument":                   false,
+			"instrument":                   true,
 			"subscription_id":              subscriptionID,
 			"resource_group_name":          resourceGroup,
 			"container_app_environment_id": environmentID,
@@ -111,16 +111,6 @@ func TestContainerAppE2E(t *testing.T) {
 	// Teardown always, even on failure or panic.
 	defer terraform.Destroy(t, opts)
 
-	// The instrumented app (module-managed) and the uninstrumented app (a plain
-	// resource) share one Azure name but are distinct Terraform addresses, so a flip
-	// can't be a single in-place apply -- Terraform would create the replacement while
-	// the old one still exists ("already exists"). Each transition therefore destroys
-	// the current resource before creating the next.
-	setMode := func(instrument bool) {
-		opts.Vars["instrument"] = instrument
-		terraform.Apply(t, opts)
-	}
-
 	mustGetApp := func() containerApp {
 		app, err := getContainerApp(ctx, subscriptionID, resourceGroup, name)
 		require.NoError(t, err)
@@ -128,31 +118,28 @@ func TestContainerAppE2E(t *testing.T) {
 		return app
 	}
 
-	// 1. Provision the uninstrumented workload; confirm it starts clean.
-	terraform.InitAndApply(t, opts) // instrument=false
-	require.NoError(t, verifyUninstrumented(mustGetApp()))
-
-	// 2. APPLY: instrument (destroy baseline first to free the name), then verify config.
-	terraform.Destroy(t, opts) // instrument=false -> remove the plain app
-	setMode(true)
+	// 1. APPLY: create the workload through the module (from nothing), then verify config.
+	terraform.InitAndApply(t, opts) // instrument=true
 	require.NoError(t, verifyInstrumented(mustGetApp(), exp))
 
-	// 3. Trigger the workload over HTTP.
+	// 2. Trigger the workload over HTTP.
 	fqdn := terraform.Output(t, opts, "app_fqdn")
 	require.NotEmpty(t, fqdn, "expected an ingress FQDN")
 	triggerWorkload(t, fqdn)
 
-	// 4. Verify telemetry (traces + logs) flows, filtered by this run's identity.
+	// 3. Verify telemetry (traces + logs) flows, filtered by this run's identity.
 	checkTelemetryFlowing(t, ctx, fqdn, site, apiKey, appKey, telID)
 
-	// 5. APPLY again: assert idempotent (no diff, no duplicate).
+	// 4. APPLY again: assert idempotent (no diff, no duplicate).
 	terraform.Apply(t, opts)
 	require.Equal(t, 0, terraform.PlanExitCode(t, opts), "re-apply should be a no-op (no diff)")
 
-	// 6. REMOVE: drop the module wrapper (back to the plain app), then verify clean.
-	terraform.Destroy(t, opts) // instrument=true -> remove the instrumented app
-	setMode(false)
-	require.NoError(t, verifyUninstrumented(mustGetApp()))
+	// 5. REMOVE: toggle the module off and verify the app no longer exists.
+	opts.Vars["instrument"] = false
+	terraform.Apply(t, opts)
+	_, err := getContainerApp(ctx, subscriptionID, resourceGroup, name)
+	require.Error(t, err, "container app should no longer exist after the module is removed")
+	require.Contains(t, err.Error(), "ResourceNotFound", "expected an Azure not-found error, got: %v", err)
 }
 
 // checkTelemetryFlowing asserts that both traces and logs carrying this run's identity
