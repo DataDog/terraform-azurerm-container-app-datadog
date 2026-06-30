@@ -34,7 +34,7 @@ var sharedCfg = e2eshared.Config{
 	RetryPatterns: []string{
 		"GatewayTimeout",
 		"TooManyRequests",
-		"Conflict", // a stale revision/name still being deleted during an instrument<->plain flip
+		"Conflict", // a stale revision/resource still being deleted
 		"OperationNotAllowed",
 		"ETIMEDOUT",
 		"ECONNRESET",
@@ -45,7 +45,7 @@ var sharedCfg = e2eshared.Config{
 }
 
 // retryableTerraformErrors are surfaced to Terratest so it retries apply/destroy on the
-// same transient conditions (notably the brief name Conflict during a flip).
+// same transient conditions.
 var retryableTerraformErrors = map[string]string{
 	".*Conflict.*":                "Resource conflict, likely a delete still in flight; retrying.",
 	".*TooManyRequests.*":         "Azure throttling; retrying.",
@@ -254,31 +254,4 @@ func verifyInstrumented(app containerApp, exp Expectations) error {
 	e2eshared.RequireHygieneTags(&v, sharedCfg, app.Tags, exp.RunID)
 
 	return v.Err("instrumented contract violated")
-}
-
-// verifyUninstrumented asserts the clean end-state: no sidecar, no shared volume, no
-// DD_* env vars, no API-key secret, and no DD identity tags. Absence is asserted
-// explicitly. The one_e2e_created freshness tag (ours, not Datadog's) may remain.
-func verifyUninstrumented(app containerApp) error {
-	var v e2eshared.Violations
-
-	if app.sidecar() != nil {
-		v.Addf("sidecar %q should be gone", sidecarName)
-	}
-	if app.volume(sharedVolumeName) != nil {
-		v.Addf("shared volume %q should be gone", sharedVolumeName)
-	}
-	for _, c := range app.Properties.Template.Containers {
-		e2eshared.ForbidKeyPrefix(&v, fmt.Sprintf("container %q env var", c.Name), c.envMap(), "DD_")
-	}
-	if app.hasSecret(apiKeySecretName) {
-		v.Addf("%q secret should be gone", apiKeySecretName)
-	}
-	for _, tag := range []string{moduleMarkerTag, "service", "env", "version"} {
-		if _, ok := app.Tags[tag]; ok {
-			v.Addf("DD identity tag %q should be gone", tag)
-		}
-	}
-
-	return v.Err("uninstrumented (post-remove) contract violated")
 }
