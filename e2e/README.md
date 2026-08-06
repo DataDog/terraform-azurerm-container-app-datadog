@@ -14,18 +14,14 @@ The suite creates a run-scoped Azure Container App through this module, then:
 
 - Go 1.23 or later and Terraform 1.5 or later
 - An authenticated Azure CLI with access to the target subscription, resource group, and Container App Environment
-- Datadog API and application keys for `ddserverless.datadoghq.com`
-- `AZURE_SUBSCRIPTION_ID`, `AZURE_RESOURCE_GROUP`, and `AZURE_CONTAINER_APP_ENV`
+- `DD_API_KEY` and `DD_APP_KEY` for `ddserverless.datadoghq.com`
 
-`DD_SITE` defaults to `datadoghq.com`. The workload and serverless-init images are pinned by digest. `E2E_WORKLOAD_IMAGE` and `E2E_SERVERLESS_INIT_IMAGE` may override them for deliberate local testing; private images also require `E2E_ACR_SERVER`, `E2E_ACR_USERNAME`, and `E2E_ACR_PASSWORD`.
+The suite defaults to the shared Serverless E2E Azure infrastructure: subscription `1dd25961-a5c7-45bf-a5ba-c1475d365cc7`, resource group `datadog-ci-e2e`, and Container App Environment `dd-ci-e2e-capp-env`. Set `AZURE_SUBSCRIPTION_ID`, `AZURE_RESOURCE_GROUP`, or `AZURE_CONTAINER_APP_ENV` to override them. `DD_SITE` defaults to `datadoghq.com`. The workload and serverless-init images are pinned by digest. `E2E_WORKLOAD_IMAGE` and `E2E_SERVERLESS_INIT_IMAGE` may override them for deliberate local testing; private images also require `E2E_ACR_SERVER`, `E2E_ACR_USERNAME`, and `E2E_ACR_PASSWORD`.
 
 ## Run locally
 
 ```bash
-cd e2e && dd-auth --domain ddserverless.datadoghq.com -- bash -c '
-  export DATADOG_API_KEY="$DD_API_KEY" DATADOG_APP_KEY="$DD_APP_KEY"
-  go test -count=1 -v -timeout 55m ./...
-'
+cd e2e && dd-auth --domain ddserverless.datadoghq.com -- go test -count=1 -v -timeout 55m ./...
 ```
 
 ## CI

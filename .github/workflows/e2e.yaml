@@ -68,8 +68,8 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID_E2E }}
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_E2E }}
           AZURE_CONTAINER_APP_ENV: ${{ vars.AZURE_CONTAINER_APP_ENV_E2E }}
-          DATADOG_API_KEY: ${{ steps.dd-sts.outputs.api_key }}
-          DATADOG_APP_KEY: ${{ steps.dd-sts.outputs.app_key }}
+          DD_API_KEY: ${{ steps.dd-sts.outputs.api_key }}
+          DD_APP_KEY: ${{ steps.dd-sts.outputs.app_key }}
           DD_SITE: ${{ vars.DD_SITE_E2E || 'datadoghq.com' }}
 
       - name: Ensure app deletion

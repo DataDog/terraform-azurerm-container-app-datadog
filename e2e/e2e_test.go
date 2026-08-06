@@ -35,6 +35,9 @@ const (
 	// so a pass or failure reflects this module, not a mutable upstream tag.
 	defaultWorkloadImage       = "dde2etfcapp.azurecr.io/self-monitoring-container-app-node-sidecar-prod@sha256:c55211a19ae3ef68fada20542825fbcd18f346e7f540622cfeb924ce732f5a4c"
 	defaultServerlessInitImage = "index.docker.io/datadog/serverless-init@sha256:6fb7637628fdf31d536bc9c49fbe6304371df5e2ecdb15c1c2d5e2d66395c3a0"
+	defaultSubscriptionID      = "1dd25961-a5c7-45bf-a5ba-c1475d365cc7"
+	defaultResourceGroup       = "datadog-ci-e2e"
+	defaultContainerAppEnv     = "dd-ci-e2e-capp-env"
 )
 
 // TestContainerAppE2E exercises the full instrumentation lifecycle against a real
@@ -213,11 +216,11 @@ func triggerWorkload(t *testing.T, fqdn string) {
 func loadConfig(t *testing.T) testConfig {
 	t.Helper()
 	cfg := testConfig{
-		subscriptionID: os.Getenv("AZURE_SUBSCRIPTION_ID"),
-		resourceGroup:  os.Getenv("AZURE_RESOURCE_GROUP"),
-		environment:    os.Getenv("AZURE_CONTAINER_APP_ENV"),
-		apiKey:         firstNonEmpty(os.Getenv("DATADOG_API_KEY"), os.Getenv("DD_API_KEY")),
-		appKey:         firstNonEmpty(os.Getenv("DATADOG_APP_KEY"), os.Getenv("DD_APP_KEY")),
+		subscriptionID: getEnv("AZURE_SUBSCRIPTION_ID", defaultSubscriptionID),
+		resourceGroup:  getEnv("AZURE_RESOURCE_GROUP", defaultResourceGroup),
+		environment:    getEnv("AZURE_CONTAINER_APP_ENV", defaultContainerAppEnv),
+		apiKey:         os.Getenv("DD_API_KEY"),
+		appKey:         os.Getenv("DD_APP_KEY"),
 		site:           getEnv("DD_SITE", "datadoghq.com"),
 		workloadImage:  getEnv("E2E_WORKLOAD_IMAGE", defaultWorkloadImage),
 		sidecarImage:   getEnv("E2E_SERVERLESS_INIT_IMAGE", defaultServerlessInitImage),
@@ -228,11 +231,8 @@ func loadConfig(t *testing.T) testConfig {
 		name  string
 		value string
 	}{
-		{"AZURE_SUBSCRIPTION_ID", cfg.subscriptionID},
-		{"AZURE_RESOURCE_GROUP", cfg.resourceGroup},
-		{"AZURE_CONTAINER_APP_ENV", cfg.environment},
-		{"DATADOG_API_KEY/DD_API_KEY", cfg.apiKey},
-		{"DATADOG_APP_KEY/DD_APP_KEY", cfg.appKey},
+		{"DD_API_KEY", cfg.apiKey},
+		{"DD_APP_KEY", cfg.appKey},
 	} {
 		if required.value == "" {
 			missing = append(missing, required.name)
@@ -241,16 +241,6 @@ func loadConfig(t *testing.T) testConfig {
 	require.Empty(t, missing, "missing required e2e configuration: %v", missing)
 
 	return cfg
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-
-	return ""
 }
 
 func getEnv(key, fallback string) string {
