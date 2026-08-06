@@ -66,6 +66,12 @@ variable "datadog_version" {
   nullable = false
 }
 
+variable "run_id" {
+  type        = string
+  nullable    = false
+  description = "Unique run ID recorded on the resource and propagated to telemetry."
+}
+
 variable "run_id_tag" {
   type        = string
   nullable    = false

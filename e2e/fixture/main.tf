@@ -19,8 +19,11 @@ locals {
     value = var.registry_password
   }] : null
 
-  # one_e2e_created drives the cross-repo sweeper; it must be present at creation.
-  freshness_tags = { one_e2e_created = var.created_ts }
+  # The sweeper and verifier rely on both values being present at creation.
+  hygiene_tags = {
+    one_e2e_created = var.created_ts
+    one_e2e_run_id  = var.run_id
+  }
 
   ingress = {
     external_enabled = true
@@ -48,7 +51,7 @@ module "instrumented" {
   container_app_environment_id = var.container_app_environment_id
   revision_mode                = "Single"
   workload_profile_name        = var.workload_profile_name
-  tags                         = local.freshness_tags
+  tags                         = local.hygiene_tags
 
   datadog_api_key = var.datadog_api_key
   datadog_site    = var.datadog_site
