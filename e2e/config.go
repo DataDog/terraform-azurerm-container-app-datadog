@@ -94,21 +94,68 @@ type (
 
 const (
 	sidecarName       = "datadog-sidecar"
+	workloadName      = "main"
 	sharedVolumeName  = "shared-volume"
 	apiKeySecretName  = "dd-api-key"
 	moduleMarkerTag   = "dd_sls_terraform_module"
 	serverlessInitRef = "serverless-init"
+	logPath           = "/shared-volume/logs/*.log"
 )
 
 // Expectations pins what an instrumented workload must look like, so a mismatch blames
 // the module wiring rather than upstream drift.
+type testConfig struct {
+	subscriptionID string
+	resourceGroup  string
+	environment    string
+	apiKey         string
+	appKey         string
+	site           string
+	workloadImage  string
+	sidecarImage   string
+}
+
 type Expectations struct {
-	Service      string
-	Env          string
-	Version      string
-	RunID        string
-	CreatedTS    string
-	SidecarImage string
+	Service       string
+	Env           string
+	Version       string
+	RunID         string
+	RunTag        string
+	CreatedTS     string
+	Site          string
+	WorkloadImage string
+	SidecarImage  string
+}
+
+func preflightAzure(ctx context.Context, cfg testConfig) (string, error) {
+	account, err := e2eshared.Run(ctx, sharedCfg,
+		"account", "show",
+		"--subscription", cfg.subscriptionID,
+		"--query", "id",
+		"--output", "tsv",
+		"--only-show-errors",
+	)
+	if err != nil {
+		return "", fmt.Errorf("Azure credential preflight: %w", err)
+	}
+	if account.Stdout != cfg.subscriptionID {
+		return "", fmt.Errorf("Azure credential preflight returned subscription %q, want %q", account.Stdout, cfg.subscriptionID)
+	}
+
+	environment, err := e2eshared.Run(ctx, sharedCfg,
+		"containerapp", "env", "show",
+		"--subscription", cfg.subscriptionID,
+		"--resource-group", cfg.resourceGroup,
+		"--name", cfg.environment,
+		"--query", "id",
+		"--output", "tsv",
+		"--only-show-errors",
+	)
+	if err != nil {
+		return "", fmt.Errorf("Container App Environment preflight: %w", err)
+	}
+
+	return environment.Stdout, nil
 }
 
 // getContainerApp fetches and parses the live Container App definition.
@@ -174,6 +221,16 @@ func (a containerApp) hasSecret(name string) bool {
 	return false
 }
 
+func (c caContainer) envVar(name string) *caEnvVar {
+	for i := range c.Env {
+		if c.Env[i].Name == name {
+			return &c.Env[i]
+		}
+	}
+
+	return nil
+}
+
 func (c caContainer) mounts(volumeName string) bool {
 	for _, m := range c.VolumeMounts {
 		if m.VolumeName == volumeName {
@@ -200,17 +257,40 @@ func (c caContainer) envMap() map[string]string {
 func verifyInstrumented(app containerApp, exp Expectations) error {
 	var v e2eshared.Violations
 
-	// Sidecar present, running the pinned serverless-init image.
+	// Sidecar present exactly once, running the pinned serverless-init image.
+	sidecarCount := 0
+	for _, container := range app.Properties.Template.Containers {
+		if container.Name == sidecarName {
+			sidecarCount++
+		}
+	}
+	if sidecarCount != 1 {
+		v.Addf("%q container count = %d, want 1", sidecarName, sidecarCount)
+	}
 	sidecar := app.sidecar()
-	switch {
-	case sidecar == nil:
-		v.Addf("expected a %q container", sidecarName)
-	default:
+	if sidecar != nil {
 		if !strings.Contains(sidecar.Image, serverlessInitRef) {
 			v.Addf("sidecar should run serverless-init, got %q", sidecar.Image)
 		}
 		if sidecar.Image != exp.SidecarImage {
 			v.Addf("sidecar image = %q, want pinned %q", sidecar.Image, exp.SidecarImage)
+		}
+		if !sidecar.mounts(sharedVolumeName) {
+			v.Addf("container %q should mount the shared volume", sidecarName)
+		}
+		e2eshared.RequireValues(&v, "sidecar env var", sidecar.envMap(), map[string]string{
+			"DD_ENV":                 exp.Env,
+			"DD_SERVERLESS_LOG_PATH": logPath,
+			"DD_SERVICE":             exp.Service,
+			"DD_SITE":                exp.Site,
+			"DD_TAGS":                exp.RunTag,
+			"DD_VERSION":             exp.Version,
+		})
+		switch apiKey := sidecar.envVar("DD_API_KEY"); {
+		case apiKey == nil:
+			v.Addf("missing sidecar env var DD_API_KEY")
+		case apiKey.SecretRef != apiKeySecretName:
+			v.Addf("sidecar env var DD_API_KEY secret ref = %q, want %q", apiKey.SecretRef, apiKeySecretName)
 		}
 	}
 
@@ -223,17 +303,26 @@ func verifyInstrumented(app containerApp, exp Expectations) error {
 	}
 
 	appContainers := app.appContainers()
-	if len(appContainers) == 0 {
-		v.Addf("expected at least one app container besides the sidecar")
+	if len(appContainers) != 1 {
+		v.Addf("app container count = %d, want 1", len(appContainers))
 	}
 	for _, c := range appContainers {
+		if c.Name != workloadName {
+			v.Addf("app container name = %q, want %q", c.Name, workloadName)
+		}
+		if c.Image != exp.WorkloadImage {
+			v.Addf("container %q image = %q, want pinned %q", c.Name, c.Image, exp.WorkloadImage)
+		}
 		if !c.mounts(sharedVolumeName) {
 			v.Addf("container %q should mount the shared volume", c.Name)
 		}
-		env := c.envMap()
-		e2eshared.RequirePresent(&v, "env var", env, "DD_LOGS_INJECTION", "DD_SERVICE", "DD_SERVERLESS_LOG_PATH")
-		e2eshared.RequireValues(&v, fmt.Sprintf("container %q env var", c.Name), env, map[string]string{
-			"DD_SERVICE": exp.Service,
+		e2eshared.RequireValues(&v, fmt.Sprintf("container %q env var", c.Name), c.envMap(), map[string]string{
+			"DD_ENV":                 exp.Env,
+			"DD_LOGS_INJECTION":      "true",
+			"DD_SERVERLESS_LOG_PATH": logPath,
+			"DD_SERVICE":             exp.Service,
+			"DD_TAGS":                exp.RunTag,
+			"DD_VERSION":             exp.Version,
 		})
 	}
 
@@ -244,14 +333,15 @@ func verifyInstrumented(app containerApp, exp Expectations) error {
 
 	// Unified service tagging identity on the resource tags + module marker.
 	e2eshared.RequireValues(&v, "tag", app.Tags, map[string]string{
-		"service": exp.Service,
-		"env":     exp.Env,
-		"version": exp.Version,
+		"env":             exp.Env,
+		"one_e2e_created": exp.CreatedTS,
+		"one_e2e_run_id":  exp.RunID,
+		"service":         exp.Service,
+		"version":         exp.Version,
 	})
 	if _, ok := app.Tags[moduleMarkerTag]; !ok {
 		v.Addf("module marker tag %q should be present", moduleMarkerTag)
 	}
-	e2eshared.RequireHygieneTags(&v, sharedCfg, app.Tags, exp.RunID)
 
 	return v.Err("instrumented contract violated")
 }

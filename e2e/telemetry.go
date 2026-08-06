@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"testing"
 	"time"
 
 	e2eshared "github.com/DataDog/terraform-azurerm-container-app-datadog/e2e/shared"
@@ -47,6 +48,7 @@ func (id telemetryIdentity) matches(e e2eshared.Event) bool {
 // delay) but never declares success without a match.
 func waitForTelemetry(
 	ctx context.Context,
+	t *testing.T,
 	label string,
 	search func(context.Context, string) ([]e2eshared.Event, error),
 	id telemetryIdentity,
@@ -54,12 +56,15 @@ func waitForTelemetry(
 	query := id.query()
 	var lastErr error
 	for attempt := 1; attempt <= telemetryMaxAttempts; attempt++ {
+		t.Logf("[%s] telemetry attempt %d/%d", label, attempt, telemetryMaxAttempts)
 		events, err := search(ctx, query)
 		if err != nil {
 			lastErr = err
+			t.Logf("[%s] telemetry query failed: %v", label, err)
 		} else {
 			for _, e := range events {
 				if id.matches(e) {
+					t.Logf("[%s] telemetry matched on attempt %d/%d", label, attempt, telemetryMaxAttempts)
 					return nil
 				}
 			}
