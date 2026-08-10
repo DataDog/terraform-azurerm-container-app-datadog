@@ -37,7 +37,7 @@ const (
 	defaultServerlessInitImage = "index.docker.io/datadog/serverless-init@sha256:6fb7637628fdf31d536bc9c49fbe6304371df5e2ecdb15c1c2d5e2d66395c3a0"
 	defaultSubscriptionID      = "1dd25961-a5c7-45bf-a5ba-c1475d365cc7"
 	defaultResourceGroup       = "datadog-ci-e2e"
-	defaultContainerAppEnv     = "dd-ci-e2e-capp-env"
+	defaultContainerAppEnv     = "dd-ci-e2e-tf-capp-env"
 )
 
 // TestContainerAppE2E exercises the full instrumentation lifecycle against a real
