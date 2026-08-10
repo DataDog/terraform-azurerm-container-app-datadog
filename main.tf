@@ -81,6 +81,8 @@ locals {
   sidecar_container = merge(
     var.datadog_sidecar,
     {
+      args          = []
+      command       = []
       env           = local.all_sidecar_env_vars
       volume_mounts = var.datadog_enable_logging ? [var.datadog_shared_volume] : []
       startup_probe = [{
@@ -142,6 +144,8 @@ locals {
   template_container = concat([local.sidecar_container],
     [for container in local.containers_without_sidecar :
       merge(container, {
+        args    = coalesce(container.args, [])
+        command = coalesce(container.command, [])
         env = concat(
           # First, preserve user-defined env vars with secret_name
           [for env in coalesce(container.env, []) : { name = env.name, value = env.value, secret_name = env.secret_name }

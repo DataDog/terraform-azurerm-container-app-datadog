@@ -3,8 +3,8 @@
 
 // Package e2e exercises the full lifecycle of the container-app-datadog Terraform module
 // against a real Azure Container App and Datadog: APPLY the module and verify config,
-// trigger it and verify telemetry flows, re-APPLY for idempotency, REMOVE and verify the
-// app is gone, then always tear down.
+// trigger it and verify telemetry flows, assert the next plan is empty, REMOVE and verify
+// the app is gone, then tear down after failures.
 //
 // See README.md for the auth and environment prerequisites.
 package e2e
@@ -42,12 +42,20 @@ const (
 
 // TestContainerAppE2E exercises the full instrumentation lifecycle against a real
 // Azure Container App: APPLY the module (from nothing) -> verify config -> trigger ->
-// verify telemetry -> re-apply (idempotent) -> remove -> verify the app is gone.
+// verify telemetry -> assert an empty plan -> remove -> verify the app is gone.
 func TestContainerAppE2E(t *testing.T) {
 	cfg := loadConfig(t)
 	ctx := context.Background()
-	environmentID, err := preflightAzure(ctx, cfg)
+	environment, err := preflightAzure(ctx, cfg)
 	require.NoError(t, err)
+	if cfg.workloadProfile == "" {
+		for _, profile := range environment.WorkloadProfiles {
+			if profile.Name == "Consumption" {
+				cfg.workloadProfile = profile.Name
+				break
+			}
+		}
+	}
 
 	runID := os.Getenv("E2E_RUN_ID")
 	if runID == "" {
@@ -76,7 +84,7 @@ func TestContainerAppE2E(t *testing.T) {
 			"instrument":                   true,
 			"subscription_id":              cfg.subscriptionID,
 			"resource_group_name":          cfg.resourceGroup,
-			"container_app_environment_id": environmentID,
+			"container_app_environment_id": environment.ID,
 			"name":                         name,
 			"workload_image":               exp.WorkloadImage,
 			"datadog_site":                 exp.Site,
@@ -101,10 +109,25 @@ func TestContainerAppE2E(t *testing.T) {
 		TimeBetweenRetries:       15 * time.Second,
 		NoColor:                  true,
 	}
+	if cfg.workloadProfile != "" {
+		opts.Vars["workload_profile_name"] = cfg.workloadProfile
+	}
 
-	// Teardown always, even on failure or panic.
+	cleanupComplete := false
 	defer func() {
-		runPhase(t, "teardown", func() { terraform.Destroy(t, opts) })
+		if cleanupComplete {
+			return
+		}
+		runPhase(t, "teardown", func() {
+			if _, err := terraform.DestroyE(t, opts); err != nil {
+				t.Logf("Terraform teardown failed: %v", err)
+			}
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			if err := deleteContainerApp(cleanupCtx, cfg.subscriptionID, cfg.resourceGroup, name); err != nil {
+				t.Errorf("Azure fallback cleanup failed for %q: %v", name, err)
+			}
+		})
 	}()
 
 	mustGetApp := func() containerApp {
@@ -117,22 +140,22 @@ func TestContainerAppE2E(t *testing.T) {
 	runPhase(t, "instrumentation deploy", func() {
 		terraform.InitAndApply(t, opts)
 	})
+	var fqdn string
 	runPhase(t, "config verification", func() {
-		require.NoError(t, verifyInstrumented(mustGetApp(), exp))
+		app := mustGetApp()
+		require.NoError(t, verifyInstrumented(app, exp))
+		fqdn = app.Properties.Configuration.Ingress.FQDN
+		require.NotEmpty(t, fqdn, "expected an ingress FQDN")
 	})
 
-	var fqdn string
 	runPhase(t, "invoke", func() {
-		fqdn = terraform.Output(t, opts, "app_fqdn")
-		require.NotEmpty(t, fqdn, "expected an ingress FQDN")
 		triggerWorkload(t, fqdn)
 	})
 	runPhase(t, "telemetry wait", func() {
 		checkTelemetryFlowing(t, ctx, fqdn, exp.Site, cfg.apiKey, cfg.appKey, telID)
 	})
 	runPhase(t, "idempotency check", func() {
-		terraform.Apply(t, opts)
-		require.Equal(t, 0, terraform.PlanExitCode(t, opts), "re-apply should be a no-op (no diff)")
+		require.Equal(t, 0, terraform.PlanExitCode(t, opts), "next plan should have no diff")
 	})
 	runPhase(t, "destroy", func() {
 		opts.Vars["instrument"] = false
@@ -141,8 +164,9 @@ func TestContainerAppE2E(t *testing.T) {
 	runPhase(t, "cleanup verification", func() {
 		_, err := getContainerApp(ctx, cfg.subscriptionID, cfg.resourceGroup, name)
 		require.Error(t, err, "container app should no longer exist after the module is removed")
-		require.Contains(t, err.Error(), "ResourceNotFound", "expected an Azure not-found error, got: %v", err)
+		require.True(t, isContainerAppNotFound(err), "expected an Azure not-found error, got: %v", err)
 	})
+	cleanupComplete = true
 }
 
 // checkTelemetryFlowing asserts that both traces and logs carrying this run's identity
@@ -216,14 +240,15 @@ func triggerWorkload(t *testing.T, fqdn string) {
 func loadConfig(t *testing.T) testConfig {
 	t.Helper()
 	cfg := testConfig{
-		subscriptionID: getEnv("AZURE_SUBSCRIPTION_ID", defaultSubscriptionID),
-		resourceGroup:  getEnv("AZURE_RESOURCE_GROUP", defaultResourceGroup),
-		environment:    getEnv("AZURE_CONTAINER_APP_ENV", defaultContainerAppEnv),
-		apiKey:         os.Getenv("DD_API_KEY"),
-		appKey:         os.Getenv("DD_APP_KEY"),
-		site:           getEnv("DD_SITE", "datadoghq.com"),
-		workloadImage:  getEnv("E2E_WORKLOAD_IMAGE", defaultWorkloadImage),
-		sidecarImage:   getEnv("E2E_SERVERLESS_INIT_IMAGE", defaultServerlessInitImage),
+		subscriptionID:  getEnv("AZURE_SUBSCRIPTION_ID", defaultSubscriptionID),
+		resourceGroup:   getEnv("AZURE_RESOURCE_GROUP", defaultResourceGroup),
+		environment:     getEnv("AZURE_CONTAINER_APP_ENV", defaultContainerAppEnv),
+		workloadProfile: os.Getenv("AZURE_CONTAINER_APP_WORKLOAD_PROFILE"),
+		apiKey:          os.Getenv("DD_API_KEY"),
+		appKey:          os.Getenv("DD_APP_KEY"),
+		site:            getEnv("DD_SITE", "datadoghq.com"),
+		workloadImage:   getEnv("E2E_WORKLOAD_IMAGE", defaultWorkloadImage),
+		sidecarImage:    getEnv("E2E_SERVERLESS_INIT_IMAGE", defaultServerlessInitImage),
 	}
 
 	var missing []string

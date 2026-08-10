@@ -52,6 +52,10 @@ module "instrumented" {
   revision_mode                = "Single"
   workload_profile_name        = var.workload_profile_name
   tags                         = local.hygiene_tags
+  timeouts = {
+    create = "10m"
+    delete = "10m"
+  }
 
   datadog_api_key = var.datadog_api_key
   datadog_site    = var.datadog_site

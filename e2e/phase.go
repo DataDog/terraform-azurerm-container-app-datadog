@@ -36,7 +36,7 @@ func runPhase(t *testing.T, name string, run func()) {
 	defer func() {
 		close(stop)
 		heartbeat.Wait()
-		t.Logf("[phase] DONE %s elapsed=%s", name, time.Since(started).Round(time.Second))
+		t.Logf("[phase] DONE %s elapsed=%s", name, time.Since(started).Round(time.Millisecond))
 	}()
 
 	run()

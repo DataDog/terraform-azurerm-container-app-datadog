@@ -55,8 +55,14 @@ var retryableTerraformErrors = map[string]string{
 	".*temporarily unavailable.*": "Transient unavailability; retrying.",
 }
 
-// Subset of `az containerapp show` JSON that the conformance contract cares about.
+// Subsets of Azure CLI JSON used by preflight and conformance checks.
 type (
+	containerAppEnvironment struct {
+		ID               string `json:"id"`
+		WorkloadProfiles []struct {
+			Name string `json:"name"`
+		} `json:"workloadProfiles"`
+	}
 	caEnvVar struct {
 		Name      string `json:"name"`
 		Value     string `json:"value"`
@@ -83,6 +89,9 @@ type (
 				Volumes    []caVolume    `json:"volumes"`
 			} `json:"template"`
 			Configuration struct {
+				Ingress struct {
+					FQDN string `json:"fqdn"`
+				} `json:"ingress"`
 				Secrets []struct {
 					Name string `json:"name"`
 				} `json:"secrets"`
@@ -105,14 +114,15 @@ const (
 // Expectations pins what an instrumented workload must look like, so a mismatch blames
 // the module wiring rather than upstream drift.
 type testConfig struct {
-	subscriptionID string
-	resourceGroup  string
-	environment    string
-	apiKey         string
-	appKey         string
-	site           string
-	workloadImage  string
-	sidecarImage   string
+	subscriptionID  string
+	resourceGroup   string
+	environment     string
+	workloadProfile string
+	apiKey          string
+	appKey          string
+	site            string
+	workloadImage   string
+	sidecarImage    string
 }
 
 type Expectations struct {
@@ -127,7 +137,7 @@ type Expectations struct {
 	SidecarImage  string
 }
 
-func preflightAzure(ctx context.Context, cfg testConfig) (string, error) {
+func preflightAzure(ctx context.Context, cfg testConfig) (containerAppEnvironment, error) {
 	account, err := e2eshared.Run(ctx, sharedCfg,
 		"account", "show",
 		"--subscription", cfg.subscriptionID,
@@ -136,26 +146,31 @@ func preflightAzure(ctx context.Context, cfg testConfig) (string, error) {
 		"--only-show-errors",
 	)
 	if err != nil {
-		return "", fmt.Errorf("Azure credential preflight: %w", err)
+		return containerAppEnvironment{}, fmt.Errorf("Azure credential preflight: %w", err)
 	}
 	if account.Stdout != cfg.subscriptionID {
-		return "", fmt.Errorf("Azure credential preflight returned subscription %q, want %q", account.Stdout, cfg.subscriptionID)
+		return containerAppEnvironment{}, fmt.Errorf("Azure credential preflight returned subscription %q, want %q", account.Stdout, cfg.subscriptionID)
 	}
 
-	environment, err := e2eshared.Run(ctx, sharedCfg,
+	result, err := e2eshared.Run(ctx, sharedCfg,
 		"containerapp", "env", "show",
 		"--subscription", cfg.subscriptionID,
 		"--resource-group", cfg.resourceGroup,
 		"--name", cfg.environment,
-		"--query", "id",
-		"--output", "tsv",
+		"--query", "{id:id,workloadProfiles:properties.workloadProfiles[].{name:name}}",
+		"--output", "json",
 		"--only-show-errors",
 	)
 	if err != nil {
-		return "", fmt.Errorf("Container App Environment preflight: %w", err)
+		return containerAppEnvironment{}, fmt.Errorf("Container App Environment preflight: %w", err)
 	}
 
-	return environment.Stdout, nil
+	var environment containerAppEnvironment
+	if err := json.Unmarshal([]byte(result.Stdout), &environment); err != nil {
+		return containerAppEnvironment{}, fmt.Errorf("parsing Container App Environment preflight: %w", err)
+	}
+
+	return environment, nil
 }
 
 // getContainerApp fetches and parses the live Container App definition.
@@ -178,6 +193,34 @@ func getContainerApp(ctx context.Context, subscriptionID, resourceGroup, name st
 	}
 
 	return app, nil
+}
+
+// deleteContainerApp catches resources Azure accepted but Terraform never recorded in
+// state, such as a create that timed out while Azure continued provisioning it.
+func deleteContainerApp(ctx context.Context, subscriptionID, resourceGroup, name string) error {
+	_, err := e2eshared.RunWithRetries(ctx, sharedCfg, 3, 5*time.Second,
+		"containerapp", "delete",
+		"--subscription", subscriptionID,
+		"--resource-group", resourceGroup,
+		"--name", name,
+		"--yes",
+		"--no-wait",
+		"--only-show-errors",
+	)
+	if err != nil && !isContainerAppNotFound(err) {
+		return err
+	}
+
+	return nil
+}
+
+func isContainerAppNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	message := err.Error()
+	return strings.Contains(message, "ResourceNotFound") || strings.Contains(message, "ContainerAppNotFound")
 }
 
 func (a containerApp) sidecar() *caContainer {

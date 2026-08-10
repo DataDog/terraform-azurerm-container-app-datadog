@@ -4,10 +4,18 @@
 package e2e
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestIsContainerAppNotFound(t *testing.T) {
+	require.True(t, isContainerAppNotFound(errors.New("ResourceNotFound")))
+	require.True(t, isContainerAppNotFound(errors.New("ContainerAppNotFound")))
+	require.False(t, isContainerAppNotFound(errors.New("Forbidden")))
+	require.False(t, isContainerAppNotFound(nil))
+}
 
 func TestVerifyInstrumented(t *testing.T) {
 	exp := Expectations{
