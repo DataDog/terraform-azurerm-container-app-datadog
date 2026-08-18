@@ -29,8 +29,18 @@ func TestVerifyInstrumented(t *testing.T) {
 		SidecarImage:  "datadog/serverless-init@sha256:456",
 	}
 
-	t.Run("accepts exact contract", func(t *testing.T) {
+	t.Run("accepts exact baseline contract", func(t *testing.T) {
 		require.NoError(t, verifyInstrumented(instrumentedApp(exp), exp))
+	})
+
+	ssiExp := exp
+	ssiExp.Instrumentation = &instrumentationExpectations{
+		Language:    "python",
+		TracerImage: "datadoghq.azurecr.io/dd-lib-python-init:latest",
+		LoaderEnv:   map[string]string{"PYTHONPATH": tracerMountPath},
+	}
+	t.Run("accepts exact SSI contract", func(t *testing.T) {
+		require.NoError(t, verifyInstrumented(instrumentedApp(ssiExp), ssiExp))
 	})
 
 	tests := []struct {
@@ -43,7 +53,7 @@ func TestVerifyInstrumented(t *testing.T) {
 			change: func(app *containerApp) {
 				app.Properties.Template.Containers[1].Image = "workload:latest"
 			},
-			want: "want pinned",
+			want: "want configured",
 		},
 		{
 			name: "rejects wrong site",
@@ -66,12 +76,77 @@ func TestVerifyInstrumented(t *testing.T) {
 			},
 			want: "one_e2e_created",
 		},
+		{
+			name: "rejects SSI environment on baseline",
+			change: func(app *containerApp) {
+				app.Properties.Template.Containers[1].Env = append(
+					app.Properties.Template.Containers[1].Env,
+					caEnvVar{Name: "DD_TRACE_ENABLED", Value: "true"},
+				)
+			},
+			want: "without SSI",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			app := instrumentedApp(exp)
 			tt.change(&app)
 			require.ErrorContains(t, verifyInstrumented(app, exp), tt.want)
+		})
+	}
+
+	ssiTests := []struct {
+		name   string
+		change func(*containerApp)
+		want   string
+	}{
+		{
+			name: "rejects wrong tracer image",
+			change: func(app *containerApp) {
+				app.Properties.Template.InitContainers[0].Image = "wrong:latest"
+			},
+			want: "init container image",
+		},
+		{
+			name: "rejects missing loader environment",
+			change: func(app *containerApp) {
+				app.Properties.Template.Containers[1].Env = withoutEnv(app.Properties.Template.Containers[1].Env, "PYTHONPATH")
+			},
+			want: "PYTHONPATH",
+		},
+		{
+			name: "rejects tracer mount on sidecar",
+			change: func(app *containerApp) {
+				app.Properties.Template.Containers[0].VolumeMounts = append(
+					app.Properties.Template.Containers[0].VolumeMounts,
+					caVolumeMount{VolumeName: tracerVolumeName},
+				)
+			},
+			want: "sidecar should not mount",
+		},
+		{
+			name: "rejects missing adoption tag",
+			change: func(app *containerApp) {
+				delete(app.Tags, injectionModeTagKey)
+			},
+			want: injectionModeTagKey,
+		},
+		{
+			name: "rejects duplicate target tracer mount",
+			change: func(app *containerApp) {
+				app.Properties.Template.Containers[1].VolumeMounts = append(
+					app.Properties.Template.Containers[1].VolumeMounts,
+					caVolumeMount{VolumeName: tracerVolumeName, MountPath: "/other"},
+				)
+			},
+			want: "mount count",
+		},
+	}
+	for _, tt := range ssiTests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := instrumentedApp(ssiExp)
+			tt.change(&app)
+			require.ErrorContains(t, verifyInstrumented(app, ssiExp), tt.want)
 		})
 	}
 }
@@ -98,6 +173,19 @@ func instrumentedApp(exp expectations) containerApp {
 	)
 	workloadEnv := env(common)
 	workloadEnv = append(workloadEnv, caEnvVar{Name: "DD_LOGS_INJECTION", Value: "true"})
+	workloadMounts := []caVolumeMount{{VolumeName: sharedVolumeName}}
+	if inst := exp.Instrumentation; inst != nil {
+		workloadEnv = append(workloadEnv, caEnvVar{Name: "DD_TRACE_ENABLED", Value: "true"})
+		for i := range workloadEnv {
+			if workloadEnv[i].Name == "DD_TAGS" {
+				workloadEnv[i].Value = injectionModeDDTag + "," + exp.RunTag
+			}
+		}
+		for name, value := range inst.LoaderEnv {
+			workloadEnv = append(workloadEnv, caEnvVar{Name: name, Value: value})
+		}
+		workloadMounts = append(workloadMounts, caVolumeMount{VolumeName: tracerVolumeName, MountPath: tracerMountPath})
+	}
 
 	var app containerApp
 	app.Properties.Template.Containers = []caContainer{
@@ -111,10 +199,22 @@ func instrumentedApp(exp expectations) containerApp {
 			Name:         workloadName,
 			Image:        exp.WorkloadImage,
 			Env:          workloadEnv,
-			VolumeMounts: []caVolumeMount{{VolumeName: sharedVolumeName}},
+			VolumeMounts: workloadMounts,
 		},
 	}
 	app.Properties.Template.Volumes = []caVolume{{Name: sharedVolumeName, StorageType: "EmptyDir"}}
+	if inst := exp.Instrumentation; inst != nil {
+		app.Properties.Template.InitContainers = []caContainer{{
+			Name:         tracerInitName,
+			Image:        inst.TracerImage,
+			Command:      []string{"/datadog-init/copy-lib.sh"},
+			Args:         []string{tracerMountPath},
+			VolumeMounts: []caVolumeMount{{VolumeName: tracerVolumeName, MountPath: tracerMountPath}},
+		}}
+		app.Properties.Template.Volumes = append(app.Properties.Template.Volumes, caVolume{
+			Name: tracerVolumeName, StorageType: "EmptyDir",
+		})
+	}
 	app.Properties.Configuration.Secrets = append(app.Properties.Configuration.Secrets, struct {
 		Name string `json:"name"`
 	}{Name: apiKeySecretName})
@@ -126,6 +226,20 @@ func instrumentedApp(exp expectations) containerApp {
 		"service":                 exp.Service,
 		"version":                 exp.Version,
 	}
+	if exp.Instrumentation != nil {
+		app.Tags[injectionModeTagKey] = injectionModeTagValue
+	}
 
 	return app
+}
+
+func withoutEnv(env []caEnvVar, name string) []caEnvVar {
+	var out []caEnvVar
+	for _, item := range env {
+		if item.Name != name {
+			out = append(out, item)
+		}
+	}
+
+	return out
 }

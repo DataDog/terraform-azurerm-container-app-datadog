@@ -57,12 +57,13 @@ module "instrumented" {
     delete = "10m"
   }
 
-  datadog_api_key = var.datadog_api_key
-  datadog_site    = var.datadog_site
-  datadog_service = var.datadog_service
-  datadog_env     = var.datadog_env
-  datadog_version = var.datadog_version
-  datadog_tags    = [var.run_id_tag]
+  datadog_api_key             = var.datadog_api_key
+  datadog_site                = var.datadog_site
+  datadog_service             = var.datadog_service
+  datadog_env                 = var.datadog_env
+  datadog_version             = var.datadog_version
+  datadog_tags                = [var.run_id_tag]
+  datadog_apm_instrumentation = var.datadog_apm_instrumentation
 
   # Pin the sidecar artifact so a green/red result blames this module, not upstream.
   datadog_sidecar = {

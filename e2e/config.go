@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -75,6 +76,8 @@ type (
 	caContainer struct {
 		Name         string          `json:"name"`
 		Image        string          `json:"image"`
+		Command      []string        `json:"command"`
+		Args         []string        `json:"args"`
 		Env          []caEnvVar      `json:"env"`
 		VolumeMounts []caVolumeMount `json:"volumeMounts"`
 	}
@@ -85,8 +88,9 @@ type (
 	containerApp struct {
 		Properties struct {
 			Template struct {
-				Containers []caContainer `json:"containers"`
-				Volumes    []caVolume    `json:"volumes"`
+				Containers     []caContainer `json:"containers"`
+				InitContainers []caContainer `json:"initContainers"`
+				Volumes        []caVolume    `json:"volumes"`
 			} `json:"template"`
 			Configuration struct {
 				Ingress struct {
@@ -101,14 +105,34 @@ type (
 	}
 )
 
+var ssiLoaderEnvNames = []string{
+	"JAVA_TOOL_OPTIONS",
+	"NODE_OPTIONS",
+	"CORECLR_ENABLE_PROFILING",
+	"CORECLR_PROFILER",
+	"CORECLR_PROFILER_PATH",
+	"DD_DOTNET_TRACER_HOME",
+	"LD_PRELOAD",
+	"PYTHONPATH",
+	"RUBYOPT",
+	"PHP_INI_SCAN_DIR",
+	"DD_LOADER_PACKAGE_PATH",
+}
+
 const (
-	sidecarName       = "datadog-sidecar"
-	workloadName      = "main"
-	sharedVolumeName  = "shared-volume"
-	apiKeySecretName  = "dd-api-key"
-	moduleMarkerTag   = "dd_sls_terraform_module"
-	serverlessInitRef = "serverless-init"
-	logPath           = "/shared-volume/logs/*.log"
+	sidecarName           = "datadog-sidecar"
+	workloadName          = "main"
+	sharedVolumeName      = "shared-volume"
+	apiKeySecretName      = "dd-api-key"
+	moduleMarkerTag       = "dd_sls_terraform_module"
+	injectionModeTagKey   = "dd_sls_injection_mode"
+	injectionModeTagValue = "single_language"
+	injectionModeDDTag    = "_dd.injection.mode:serverless-single-lang"
+	tracerVolumeName      = "datadog-tracer"
+	tracerMountPath       = "/datadog-lib"
+	tracerInitName        = "datadog-tracer-copy"
+	serverlessInitRef     = "serverless-init"
+	logPath               = "/shared-volume/logs/*.log"
 )
 
 type testConfig struct {
@@ -123,16 +147,23 @@ type testConfig struct {
 	sidecarImage    string
 }
 
+type instrumentationExpectations struct {
+	Language    string
+	TracerImage string
+	LoaderEnv   map[string]string
+}
+
 // expectations pins the instrumented workload contract.
 type expectations struct {
-	Service       string
-	Env           string
-	Version       string
-	RunID         string
-	RunTag        string
-	Site          string
-	WorkloadImage string
-	SidecarImage  string
+	Service         string
+	Env             string
+	Version         string
+	RunID           string
+	RunTag          string
+	Site            string
+	WorkloadImage   string
+	SidecarImage    string
+	Instrumentation *instrumentationExpectations
 }
 
 func preflightAzure(ctx context.Context, cfg testConfig) (containerAppEnvironment, error) {
@@ -242,6 +273,16 @@ func (a containerApp) appContainers() []caContainer {
 	return out
 }
 
+func (a containerApp) initContainer(name string) *caContainer {
+	for i := range a.Properties.Template.InitContainers {
+		if a.Properties.Template.InitContainers[i].Name == name {
+			return &a.Properties.Template.InitContainers[i]
+		}
+	}
+
+	return nil
+}
+
 func (a containerApp) volume(name string) *caVolume {
 	for i := range a.Properties.Template.Volumes {
 		if a.Properties.Template.Volumes[i].Name == name {
@@ -272,14 +313,29 @@ func (c caContainer) envVar(name string) *caEnvVar {
 	return nil
 }
 
-func (c caContainer) mounts(volumeName string) bool {
-	for _, m := range c.VolumeMounts {
-		if m.VolumeName == volumeName {
-			return true
+func (c caContainer) mount(volumeName string) *caVolumeMount {
+	for i := range c.VolumeMounts {
+		if c.VolumeMounts[i].VolumeName == volumeName {
+			return &c.VolumeMounts[i]
 		}
 	}
 
-	return false
+	return nil
+}
+
+func (c caContainer) mounts(volumeName string) bool {
+	return c.mount(volumeName) != nil
+}
+
+func (c caContainer) mountCount(volumeName string) int {
+	count := 0
+	for _, mount := range c.VolumeMounts {
+		if mount.VolumeName == volumeName {
+			count++
+		}
+	}
+
+	return count
 }
 
 // envMap flattens a container's env vars into a map for the shared primitives.
@@ -292,13 +348,11 @@ func (c caContainer) envMap() map[string]string {
 	return m
 }
 
-// verifyInstrumented asserts the instrumented config: sidecar (pinned image), shared
-// volume + mounts, required DD_* env vars, the API-key secret, and unified-service-tag
-// identity. It asserts identity (values match this run), not mere existence.
+// verifyInstrumented asserts the sidecar, workload, and optional SSI contracts. It
+// asserts values for this run, not mere presence.
 func verifyInstrumented(app containerApp, exp expectations) error {
 	var v e2eshared.Violations
 
-	// Sidecar present exactly once, running the pinned serverless-init image.
 	sidecarCount := 0
 	for _, container := range app.Properties.Template.Containers {
 		if container.Name == sidecarName {
@@ -335,12 +389,79 @@ func verifyInstrumented(app containerApp, exp expectations) error {
 		}
 	}
 
-	// Shared volume (EmptyDir) plus a mount on every app container.
 	switch shared := app.volume(sharedVolumeName); {
 	case shared == nil:
 		v.Addf("expected a %q volume", sharedVolumeName)
 	case shared.StorageType != "EmptyDir":
 		v.Addf("shared volume StorageType = %q, want EmptyDir", shared.StorageType)
+	}
+
+	requiredAppEnv := map[string]string{
+		"DD_ENV":                 exp.Env,
+		"DD_LOGS_INJECTION":      "true",
+		"DD_SERVERLESS_LOG_PATH": logPath,
+		"DD_SERVICE":             exp.Service,
+		"DD_TAGS":                exp.RunTag,
+		"DD_VERSION":             exp.Version,
+	}
+	if inst := exp.Instrumentation; inst != nil {
+		requiredAppEnv["DD_TRACE_ENABLED"] = "true"
+		requiredAppEnv["DD_TAGS"] = injectionModeDDTag + "," + exp.RunTag
+		for name, value := range inst.LoaderEnv {
+			requiredAppEnv[name] = value
+		}
+
+		if len(app.Properties.Template.InitContainers) != 1 {
+			v.Addf("init container count = %d, want 1", len(app.Properties.Template.InitContainers))
+		}
+		switch init := app.initContainer(tracerInitName); {
+		case init == nil:
+			v.Addf("expected a %q init container", tracerInitName)
+		default:
+			if init.Image != inst.TracerImage {
+				v.Addf("init container image = %q, want %q", init.Image, inst.TracerImage)
+			}
+			if !slices.Equal(init.Command, []string{"/datadog-init/copy-lib.sh"}) {
+				v.Addf("init container command = %v, want [/datadog-init/copy-lib.sh]", init.Command)
+			}
+			if !slices.Equal(init.Args, []string{tracerMountPath}) {
+				v.Addf("init container args = %v, want [%s]", init.Args, tracerMountPath)
+			}
+			if count := init.mountCount(tracerVolumeName); count != 1 {
+				v.Addf("init container %q mount count = %d, want 1", tracerVolumeName, count)
+			} else if mount := init.mount(tracerVolumeName); mount.MountPath != tracerMountPath {
+				v.Addf("init container tracer mount path = %q, want %q", mount.MountPath, tracerMountPath)
+			}
+		}
+		switch tracer := app.volume(tracerVolumeName); {
+		case tracer == nil:
+			v.Addf("expected a %q volume", tracerVolumeName)
+		case tracer.StorageType != "EmptyDir":
+			v.Addf("tracer volume StorageType = %q, want EmptyDir", tracer.StorageType)
+		}
+		if sidecar != nil {
+			if sidecar.mounts(tracerVolumeName) {
+				v.Addf("sidecar should not mount %q", tracerVolumeName)
+			}
+			for _, name := range ssiLoaderEnvNames {
+				if sidecar.envVar(name) != nil {
+					v.Addf("sidecar should not have SSI env var %s", name)
+				}
+			}
+			if sidecar.envVar("DD_TRACE_ENABLED") != nil {
+				v.Addf("sidecar should not have SSI env var DD_TRACE_ENABLED")
+			}
+		}
+	} else {
+		if app.initContainer(tracerInitName) != nil {
+			v.Addf("unexpected %q init container", tracerInitName)
+		}
+		if app.volume(tracerVolumeName) != nil {
+			v.Addf("unexpected %q volume", tracerVolumeName)
+		}
+		if _, ok := app.Tags[injectionModeTagKey]; ok {
+			v.Addf("tag %q should be absent without SSI", injectionModeTagKey)
+		}
 	}
 
 	appContainers := app.appContainers()
@@ -352,33 +473,53 @@ func verifyInstrumented(app containerApp, exp expectations) error {
 			v.Addf("app container name = %q, want %q", c.Name, workloadName)
 		}
 		if c.Image != exp.WorkloadImage {
-			v.Addf("container %q image = %q, want pinned %q", c.Name, c.Image, exp.WorkloadImage)
+			v.Addf("container %q image = %q, want configured %q", c.Name, c.Image, exp.WorkloadImage)
 		}
 		if !c.mounts(sharedVolumeName) {
 			v.Addf("container %q should mount the shared volume", c.Name)
 		}
-		e2eshared.RequireValues(&v, fmt.Sprintf("container %q env var", c.Name), c.envMap(), map[string]string{
-			"DD_ENV":                 exp.Env,
-			"DD_LOGS_INJECTION":      "true",
-			"DD_SERVERLESS_LOG_PATH": logPath,
-			"DD_SERVICE":             exp.Service,
-			"DD_TAGS":                exp.RunTag,
-			"DD_VERSION":             exp.Version,
-		})
+		if inst := exp.Instrumentation; inst != nil {
+			if count := c.mountCount(tracerVolumeName); count != 1 {
+				v.Addf("container %q %q mount count = %d, want 1", c.Name, tracerVolumeName, count)
+			} else if mount := c.mount(tracerVolumeName); mount.MountPath != tracerMountPath {
+				v.Addf("container %q tracer mount path = %q, want %q", c.Name, mount.MountPath, tracerMountPath)
+			}
+			for _, name := range ssiLoaderEnvNames {
+				if _, expected := inst.LoaderEnv[name]; !expected && c.envVar(name) != nil {
+					v.Addf("container %q should not have SSI env var %s", c.Name, name)
+				}
+			}
+		} else {
+			if c.mounts(tracerVolumeName) {
+				v.Addf("container %q should not mount %q without SSI", c.Name, tracerVolumeName)
+			}
+			for _, name := range ssiLoaderEnvNames {
+				if c.envVar(name) != nil {
+					v.Addf("container %q should not have SSI env var %s without SSI", c.Name, name)
+				}
+			}
+			if c.envVar("DD_TRACE_ENABLED") != nil {
+				v.Addf("container %q should not have SSI env var DD_TRACE_ENABLED without SSI", c.Name)
+			}
+		}
+		e2eshared.RequireValues(&v, fmt.Sprintf("container %q env var", c.Name), c.envMap(), requiredAppEnv)
 	}
 
-	// API-key secret wired.
 	if !app.hasSecret(apiKeySecretName) {
 		v.Addf("expected the %q secret", apiKeySecretName)
 	}
 
 	// Unified service tagging identity on the resource tags + module marker.
 	e2eshared.RequireHygieneTags(&v, sharedCfg, app.Tags, exp.RunID)
-	e2eshared.RequireValues(&v, "tag", app.Tags, map[string]string{
+	requiredTags := map[string]string{
 		"env":     exp.Env,
 		"service": exp.Service,
 		"version": exp.Version,
-	})
+	}
+	if exp.Instrumentation != nil {
+		requiredTags[injectionModeTagKey] = injectionModeTagValue
+	}
+	e2eshared.RequireValues(&v, "tag", app.Tags, requiredTags)
 	if _, ok := app.Tags[moduleMarkerTag]; !ok {
 		v.Addf("module marker tag %q should be present", moduleMarkerTag)
 	}
