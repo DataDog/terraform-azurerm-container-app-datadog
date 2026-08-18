@@ -22,14 +22,12 @@ locals {
   ]
   datadog_api_key_secret_name = "dd-api-key"
 
-
   ### Variables to handle input checks and infrastructure overrides (volume, volume_mount, sidecar container)
   # Override user's `var.template.volume`s and remove the shared volume if shared_volume already exists and logging is enabled, else keep user's volumes
   volumes_without_shared_volume = var.datadog_enable_logging ? [
     for v in coalesce(var.template.volume, []) : v
     if v.name != var.datadog_shared_volume.name
   ] : coalesce(var.template.volume, [])
-
   # Check if sidecar container already exists and remove it from the var.template.container list if it does (to be overridden by module's instantiation)
   containers_without_sidecar = [
     for c in coalesce(var.template.container, []) : c
@@ -47,7 +45,6 @@ locals {
     for vm in coalesce(local.all_volume_mounts, []) :
     vm if !(vm.name == var.datadog_shared_volume.name || vm.path == var.datadog_shared_volume.path)
   ] : local.all_volume_mounts
-
   # Merge env vars for sidecar-instrumentation with user-provided env vars for agent-configuration
   # (ignore any module-controlled env vars that user provides in var.datadog_sidecar.env)
   required_module_sidecar_env_vars = {
@@ -126,7 +123,6 @@ check "volume_mounts_share_names_and_or_paths" {
   }
 }
 
-
 # Implementation
 locals {
   tags = merge(
@@ -134,6 +130,7 @@ locals {
     { service = local.datadog_service, dd_sls_terraform_module = local.module_version },
     var.datadog_env != null ? { env = var.datadog_env } : {},
     var.datadog_version != null ? { version = var.datadog_version } : {},
+    local.apm_enabled ? { dd_sls_injection_mode = "single_language" } : {},
   )
 
   secret = concat(
@@ -141,46 +138,92 @@ locals {
     tolist(coalesce(var.secret, [])),
   )
 
-  # Update the environments on the containers. Normalize command fields to prevent perpetual diffs.
-  template_container = concat([local.sidecar_container],
-    [for container in local.containers_without_sidecar :
+  # Update the environments and mounts on application containers. Normalize command fields to prevent perpetual diffs.
+  template_container = concat(
+    [local.sidecar_container],
+    [for index, container in local.containers_without_sidecar :
       merge(container, {
         args    = coalesce(container.args, [])
         command = coalesce(container.command, [])
         env = concat(
-          # First, preserve user-defined env vars with secret_name
-          [for env in coalesce(container.env, []) : { name = env.name, value = env.value, secret_name = env.secret_name }
-          if env.secret_name != null && !contains(local.module_controlled_env_vars, env.name)],
-          # Then add module-managed env vars
+          [for env in coalesce(container.env, []) : {
+            name        = env.name
+            value       = env.value
+            secret_name = env.secret_name
+            } if env.secret_name != null && !contains(
+            concat(
+              local.module_controlled_env_vars,
+              local.apm_enabled && index == local.apm_target_container_index ? concat(
+                ["DD_TRACE_ENABLED"],
+                local.apm_merged_env_names,
+              ) : [],
+            ),
+            env.name,
+          )],
           [for name, value in merge(
-            # variables which can be overrided by user-provided configuration
             local.shared_env_vars,
             { DD_LOGS_INJECTION = "true" },
-            # user-provided env vars (without secret_name) converted to map
-            { for env in coalesce(container.env, []) : env.name => env.value if env.secret_name == null },
-            # always override user-provided configuration with these env vars
-            { DD_SERVERLESS_LOG_PATH = var.datadog_logging_path }
+            { for env in coalesce(container.env, []) : env.name => env.value
+              if env.secret_name == null && !(
+                local.apm_enabled && index == local.apm_target_container_index && contains(
+                  concat(["DD_TRACE_ENABLED"], local.apm_merged_env_names),
+                  env.name,
+                )
+              )
+            },
+            { DD_SERVERLESS_LOG_PATH = var.datadog_logging_path },
+            local.apm_enabled && index == local.apm_target_container_index ? merge(
+              { DD_TRACE_ENABLED = "true", DD_TAGS = local.apm_merged_dd_tags },
+              local.apm_merged_loader_env,
+            ) : {},
           ) : { name = name, value = value, secret_name = null }]
         )
-        # Check for each provided container the volume mounts and if logging is enabled and the shared volume is an input, do not mount it again
         volume_mounts = concat(
           var.datadog_enable_logging ? [var.datadog_shared_volume] : [],
-          [for vm in coalesce(container.volume_mounts, []) : vm if contains(local.filtered_volume_mounts, vm)],
+          local.apm_enabled && index == local.apm_target_container_index ? [local.tracer_volume_mount] : [],
+          [for volume_mount in coalesce(container.volume_mounts, []) : volume_mount
+            if contains(local.filtered_volume_mounts, volume_mount) && !(
+              local.apm_enabled && (
+                volume_mount.name == local.tracer_volume_name || (
+                  index == local.apm_target_container_index && volume_mount.path == local.tracer_volume_mount_path
+                )
+              )
+            )
+          ],
         )
-    })]
+      })
+    ],
   )
 
-  # If dd_enable_logging is true, add the shared volume to the template volumes
-  template_volume = concat(local.volumes_without_shared_volume, var.datadog_enable_logging ? [{
-    name         = var.datadog_shared_volume.name
-    storage_type = "EmptyDir"
-  }] : [])
+  template_init_container = flatten([
+    local.init_containers_without_tracer_copy,
+    local.tracer_copy_init_container != null ? [local.tracer_copy_init_container] : [],
+  ])
+
+  template_volume = concat(
+    local.volumes_without_tracer_volume,
+    local.apm_enabled ? [{
+      mount_options = null
+      name          = local.tracer_volume_name
+      storage_name  = null
+      storage_type  = "EmptyDir"
+    }] : [],
+    var.datadog_enable_logging ? [{
+      mount_options = null
+      name          = var.datadog_shared_volume.name
+      storage_name  = null
+      storage_type  = "EmptyDir"
+    }] : [],
+  )
 }
 
 
 output "ignored_volume_mounts" {
-  description = "List of volume mounts that overlap with the Datadog shared volume and are ignored by the module."
-  value       = [for vm in local.all_volume_mounts : vm if !contains(local.filtered_volume_mounts, vm)]
+  description = "List of volume mounts that overlap with a module-managed volume and are ignored by the module."
+  value = distinct(concat(
+    [for vm in local.all_volume_mounts : vm if !contains(local.filtered_volume_mounts, vm)],
+    local.apm_ignored_tracer_volume_mounts,
+  ))
 }
 
 output "ignored_containers" {
@@ -190,5 +233,5 @@ output "ignored_containers" {
 
 output "ignored_volumes" {
   description = "List of volumes that are ignored by the module."
-  value       = [for v in coalesce(var.template.volume, []) : v if !contains(local.volumes_without_shared_volume, v)]
+  value       = [for volume in coalesce(var.template.volume, []) : volume if !contains(local.volumes_without_tracer_volume, volume)]
 }
