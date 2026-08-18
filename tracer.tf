@@ -207,8 +207,8 @@ locals {
     image   = "datadoghq.azurecr.io/dd-lib-${var.datadog_apm_instrumentation.language}-init:${var.datadog_apm_instrumentation.tracer_version}"
     command = ["/datadog-init/copy-lib.sh"]
     args    = [local.tracer_volume_mount_path]
-    cpu     = null
-    memory  = null
+    cpu     = 0.25
+    memory  = "0.5Gi"
     env     = null
     volume_mounts = [
       local.tracer_volume_mount,
