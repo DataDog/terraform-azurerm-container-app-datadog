@@ -80,8 +80,7 @@ jobs:
           names="$(az resource list \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --resource-type Microsoft.App/containerApps \
-            --tag "one_e2e_run_id=$E2E_RUN_ID" \
-            --query '[].name' \
+            --query "[?tags.one_e2e_run_id=='$E2E_RUN_ID'].name" \
             --output tsv \
             --only-show-errors)"
           while IFS= read -r name; do
