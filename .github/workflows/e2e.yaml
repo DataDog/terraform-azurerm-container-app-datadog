@@ -63,7 +63,9 @@ jobs:
 
       - name: Run e2e tests
         working-directory: e2e
-        run: go test -count=1 -v -timeout 20m -json ./... | jq --unbuffered -jr 'select(.Action == "output") | .Output'
+        run: |
+          set -o pipefail
+          go test -count=1 -v -timeout 20m -json ./... | jq --unbuffered -jr 'select(.Action == "output") | .Output'
         env:
           AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID_E2E }}
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_E2E }}
