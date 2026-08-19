@@ -30,7 +30,7 @@ The 20-minute timeout is a failure ceiling; a healthy run should finish in under
 
 [The E2E workflow](../.github/workflows/e2e.yaml) runs for changes to Terraform, the suite, or the workflow in the canonical repository. Fork PRs do not receive cloud credentials. Azure authentication uses GitHub OIDC; Datadog authentication uses short-lived keys from `DataDog/dd-sts-action`.
 
-CI requires `AZURE_CLIENT_ID_E2E`, `AZURE_TENANT_ID_E2E`, `AZURE_SUBSCRIPTION_ID_E2E`, `AZURE_RESOURCE_GROUP_E2E`, and `AZURE_CONTAINER_APP_ENV_E2E`. `DD_SITE_E2E` is optional. Missing authentication or configuration fails the job.
+CI reads Azure authentication and resource settings from `AZURE_CLIENT_ID_E2E`, `AZURE_TENANT_ID_E2E`, `AZURE_SUBSCRIPTION_ID_E2E`, `AZURE_RESOURCE_GROUP_E2E`, and `AZURE_CONTAINER_APP_ENV_E2E`. `DD_SITE_E2E` is optional. The suite uses the shared infrastructure defaults described above when resource settings are unset.
 
 ## Resource hygiene
 

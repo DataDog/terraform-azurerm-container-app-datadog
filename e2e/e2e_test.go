@@ -64,18 +64,17 @@ func TestContainerAppE2E(t *testing.T) {
 	name := e2eshared.ResourceName(sharedCfg, runID)
 	createdTS := strconv.FormatInt(time.Now().Unix(), 10)
 	runTag := fmt.Sprintf("%s:%s", e2eshared.DefaultRunIDTagKey, runID)
-	exp := Expectations{
+	exp := expectations{
 		Service:       name,
 		Env:           fixtureEnv,
 		Version:       fixtureVersion,
 		RunID:         runID,
 		RunTag:        runTag,
-		CreatedTS:     createdTS,
 		Site:          cfg.site,
 		WorkloadImage: cfg.workloadImage,
 		SidecarImage:  cfg.sidecarImage,
 	}
-	telID := telemetryIdentity{service: name, env: fixtureEnv, runTag: runTag}
+	telID := e2eshared.IdentityFor(sharedCfg, name, fixtureEnv, "", runID)
 	t.Logf("run id %s -> app %q", runID, name)
 
 	opts := &terraform.Options{
@@ -93,7 +92,7 @@ func TestContainerAppE2E(t *testing.T) {
 			"datadog_version":              exp.Version,
 			"run_id":                       exp.RunID,
 			"run_id_tag":                   exp.RunTag,
-			"created_ts":                   exp.CreatedTS,
+			"created_ts":                   createdTS,
 			"serverless_init_image":        exp.SidecarImage,
 			"registry_server":              os.Getenv("E2E_ACR_SERVER"),
 			"registry_username":            os.Getenv("E2E_ACR_USERNAME"),
@@ -172,10 +171,10 @@ func TestContainerAppE2E(t *testing.T) {
 // checkTelemetryFlowing asserts that both traces and logs carrying this run's identity
 // reach Datadog. Spans and logs are polled concurrently on the same budget; the polls
 // run off the test goroutine, so their results are asserted back on it.
-func checkTelemetryFlowing(t *testing.T, ctx context.Context, fqdn, site, apiKey, appKey string, id telemetryIdentity) {
+func checkTelemetryFlowing(t *testing.T, ctx context.Context, fqdn, site, apiKey, appKey string, id e2eshared.Identity) {
 	t.Helper()
 	client := e2eshared.NewTelemetryClient(site, apiKey, appKey)
-	t.Logf("polling Datadog (%s) for telemetry matching: %s", site, id.query())
+	t.Logf("polling Datadog (%s) for telemetry from service %q", site, id.Service)
 
 	// Drive continuous traffic for the duration of the poll: the serverless-init sidecar
 	// tails the shared-volume log file from the END, so lines written before its tailer
@@ -192,10 +191,12 @@ func checkTelemetryFlowing(t *testing.T, ctx context.Context, fqdn, site, apiKey
 	}
 	results := make(chan result, 2)
 	go func() {
-		results <- result{"spans", waitForTelemetry(ctx, t, "spans", client.SearchSpans, id)}
+		_, err := client.WaitForMatching(ctx, "spans", client.SearchSpans, e2eshared.SpanQuery(id), id)
+		results <- result{"spans", err}
 	}()
 	go func() {
-		results <- result{"logs", waitForTelemetry(ctx, t, "logs", client.SearchLogs, id)}
+		_, err := client.WaitForMatching(ctx, "logs", client.SearchLogs, e2eshared.LogQuery(id), id)
+		results <- result{"logs", err}
 	}()
 	var failures []string
 	for i := 0; i < 2; i++ {

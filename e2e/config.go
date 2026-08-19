@@ -111,8 +111,6 @@ const (
 	logPath           = "/shared-volume/logs/*.log"
 )
 
-// Expectations pins what an instrumented workload must look like, so a mismatch blames
-// the module wiring rather than upstream drift.
 type testConfig struct {
 	subscriptionID  string
 	resourceGroup   string
@@ -125,13 +123,13 @@ type testConfig struct {
 	sidecarImage    string
 }
 
-type Expectations struct {
+// expectations pins the instrumented workload contract.
+type expectations struct {
 	Service       string
 	Env           string
 	Version       string
 	RunID         string
 	RunTag        string
-	CreatedTS     string
 	Site          string
 	WorkloadImage string
 	SidecarImage  string
@@ -297,7 +295,7 @@ func (c caContainer) envMap() map[string]string {
 // verifyInstrumented asserts the instrumented config: sidecar (pinned image), shared
 // volume + mounts, required DD_* env vars, the API-key secret, and unified-service-tag
 // identity. It asserts identity (values match this run), not mere existence.
-func verifyInstrumented(app containerApp, exp Expectations) error {
+func verifyInstrumented(app containerApp, exp expectations) error {
 	var v e2eshared.Violations
 
 	// Sidecar present exactly once, running the pinned serverless-init image.
@@ -375,12 +373,11 @@ func verifyInstrumented(app containerApp, exp Expectations) error {
 	}
 
 	// Unified service tagging identity on the resource tags + module marker.
+	e2eshared.RequireHygieneTags(&v, sharedCfg, app.Tags, exp.RunID)
 	e2eshared.RequireValues(&v, "tag", app.Tags, map[string]string{
-		"env":             exp.Env,
-		"one_e2e_created": exp.CreatedTS,
-		"one_e2e_run_id":  exp.RunID,
-		"service":         exp.Service,
-		"version":         exp.Version,
+		"env":     exp.Env,
+		"service": exp.Service,
+		"version": exp.Version,
 	})
 	if _, ok := app.Tags[moduleMarkerTag]; !ok {
 		v.Addf("module marker tag %q should be present", moduleMarkerTag)

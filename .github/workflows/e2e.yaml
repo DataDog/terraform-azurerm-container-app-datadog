@@ -77,9 +77,17 @@ jobs:
       - name: Ensure app deletion
         if: always() && env.E2E_RUN_ID != ''
         run: |
-          name="one-e2e-tf-capp-${E2E_RUN_ID}"
-          if az containerapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$name" --only-show-errors >/dev/null 2>&1; then
-            az containerapp delete --resource-group "$AZURE_RESOURCE_GROUP" --name "$name" --yes --no-wait --only-show-errors
-          fi
+          names="$(az resource list \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --resource-type Microsoft.App/containerApps \
+            --tag "one_e2e_run_id=$E2E_RUN_ID" \
+            --query '[].name' \
+            --output tsv \
+            --only-show-errors)"
+          while IFS= read -r name; do
+            if [[ -n "$name" ]]; then
+              az containerapp delete --resource-group "$AZURE_RESOURCE_GROUP" --name "$name" --yes --no-wait --only-show-errors
+            fi
+          done <<< "$names"
         env:
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_E2E }}

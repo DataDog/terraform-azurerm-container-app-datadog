@@ -18,13 +18,12 @@ func TestIsContainerAppNotFound(t *testing.T) {
 }
 
 func TestVerifyInstrumented(t *testing.T) {
-	exp := Expectations{
+	exp := expectations{
 		Service:       "one-e2e-tf-capp-deadbeef",
 		Env:           "e2e",
 		Version:       "1.0.0",
 		RunID:         "deadbeef",
 		RunTag:        "one_e2e_run_id:deadbeef",
-		CreatedTS:     "1234567890",
 		Site:          "datadoghq.com",
 		WorkloadImage: "workload@sha256:123",
 		SidecarImage:  "datadog/serverless-init@sha256:456",
@@ -61,9 +60,9 @@ func TestVerifyInstrumented(t *testing.T) {
 			want: "DD_TAGS",
 		},
 		{
-			name: "rejects wrong freshness tag",
+			name: "rejects missing freshness tag",
 			change: func(app *containerApp) {
-				app.Tags["one_e2e_created"] = "1"
+				delete(app.Tags, "one_e2e_created")
 			},
 			want: "one_e2e_created",
 		},
@@ -77,7 +76,7 @@ func TestVerifyInstrumented(t *testing.T) {
 	}
 }
 
-func instrumentedApp(exp Expectations) containerApp {
+func instrumentedApp(exp expectations) containerApp {
 	env := func(values map[string]string) []caEnvVar {
 		out := make([]caEnvVar, 0, len(values))
 		for name, value := range values {
@@ -122,7 +121,7 @@ func instrumentedApp(exp Expectations) containerApp {
 	app.Tags = map[string]string{
 		"dd_sls_terraform_module": "1.2.0",
 		"env":                     exp.Env,
-		"one_e2e_created":         exp.CreatedTS,
+		"one_e2e_created":         "1234567890",
 		"one_e2e_run_id":          exp.RunID,
 		"service":                 exp.Service,
 		"version":                 exp.Version,
