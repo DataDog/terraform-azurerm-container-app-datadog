@@ -216,6 +216,13 @@ locals {
   } : null
 }
 
+check "apm_target_container_exists" {
+  assert {
+    condition     = !local.apm_enabled || length(local.containers_without_sidecar) > 0
+    error_message = "No application container was found to instrument. Add a container to template.container other than the Datadog agent sidecar."
+  }
+}
+
 check "apm_target_container_known" {
   assert {
     condition = (
