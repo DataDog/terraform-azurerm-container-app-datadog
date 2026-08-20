@@ -78,9 +78,12 @@ locals {
     [for name, value in local.all_module_sidecar_env_vars : { name = name, value = value, secret_name = null }],
     [{ name = "DD_API_KEY", value = null, secret_name = local.datadog_api_key_secret_name }],
   )
+  # Azure returns omitted command fields as empty lists, so set them explicitly to prevent perpetual diffs.
   sidecar_container = merge(
     var.datadog_sidecar,
     {
+      args          = []
+      command       = []
       env           = local.all_sidecar_env_vars
       volume_mounts = var.datadog_enable_logging ? [var.datadog_shared_volume] : []
       startup_probe = [{
@@ -138,10 +141,12 @@ locals {
     tolist(coalesce(var.secret, [])),
   )
 
-  # Update the environments on the containers
+  # Update the environments on the containers. Normalize command fields to prevent perpetual diffs.
   template_container = concat([local.sidecar_container],
     [for container in local.containers_without_sidecar :
       merge(container, {
+        args    = coalesce(container.args, [])
+        command = coalesce(container.command, [])
         env = concat(
           # First, preserve user-defined env vars with secret_name
           [for env in coalesce(container.env, []) : { name = env.name, value = env.value, secret_name = env.secret_name }
