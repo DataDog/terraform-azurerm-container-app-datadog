@@ -39,7 +39,7 @@ const (
 	ssiRegistry                = "dde2etfcapp.azurecr.io"
 	defaultSubscriptionID      = "1dd25961-a5c7-45bf-a5ba-c1475d365cc7"
 	defaultResourceGroup       = "datadog-ci-e2e"
-	defaultContainerAppEnv     = "dd-ci-e2e-tf-capp-env"
+	defaultContainerAppEnv     = "dd-ci-e2e-capp-env"
 )
 
 type e2eScenario struct {
