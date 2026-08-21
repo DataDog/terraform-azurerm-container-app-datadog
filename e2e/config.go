@@ -130,7 +130,7 @@ const (
 	injectionModeDDTag    = "_dd.injection.mode:serverless-single-lang"
 	tracerVolumeName      = "datadog-tracer"
 	tracerMountPath       = "/datadog-lib"
-	tracerInitName        = "datadog-tracer-copy"
+	tracerInitName        = "datadog-tracer"
 	serverlessInitRef     = "serverless-init"
 	logPath               = "/shared-volume/logs/*.log"
 )
