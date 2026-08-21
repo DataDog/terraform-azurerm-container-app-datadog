@@ -168,4 +168,12 @@ Datadog sidecar configuration. Nested attributes include:
 - health_port - Health port to start the startup probe.
 - env - List of environment variables with name and value fieldsfor customizing Datadog agent configuration, if any.
 DESCRIPTION
+  validation {
+    condition = (
+      floor(var.datadog_sidecar.health_port) == var.datadog_sidecar.health_port &&
+      var.datadog_sidecar.health_port >= 1 &&
+      var.datadog_sidecar.health_port <= 65535
+    )
+    error_message = "Invalid health_port. Must be an integer between 1 and 65535."
+  }
 }

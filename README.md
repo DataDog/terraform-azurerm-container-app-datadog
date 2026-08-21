@@ -97,7 +97,7 @@ datadog_apm_instrumentation = {
 }
 ```
 
-The target container receives the tracer mount, loader environment variables, `DD_TRACE_ENABLED=true`, and the `_dd.injection.mode:serverless-single-lang` tag. Other application containers and the Datadog Agent sidecar are not instrumented.
+The target container receives the tracer mount, loader environment variables, `DD_TRACE_ENABLED=true`, and the `_dd.injection.mode:serverless-single-lang` tag. Other application containers and the Datadog Agent sidecar are not instrumented. If the module cannot identify or safely update the target, Terraform warns and does not inject the tracer or change the target configuration.
 
 ### Datadog Variables
 
