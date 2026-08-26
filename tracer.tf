@@ -3,6 +3,7 @@
 
 locals {
   apm_requested            = var.datadog_apm_instrumentation != null
+  scale_to_zero_enabled    = coalesce(var.template.min_replicas, 0) == 0
   tracer_volume_name       = "datadog-tracer"
   tracer_volume_mount_path = "/datadog-lib"
   tracer_init_name         = "datadog-tracer"
@@ -253,6 +254,13 @@ locals {
       local.tracer_volume_mount,
     ]
   } : null
+}
+
+check "apm_scale_to_zero" {
+  assert {
+    condition     = !local.apm_requested || !local.scale_to_zero_enabled
+    error_message = "Automatic APM instrumentation can increase cold-start delays when scale-to-zero is enabled. Prefer manual instrumentation for scale-to-zero workloads."
+  }
 }
 
 check "apm_target_container_exists" {
