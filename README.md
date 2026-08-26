@@ -74,9 +74,9 @@ module "example_container_app" {
 - See [variables.tf](variables.tf) for the complete list of datadog-specific variables, or the table below for full syntax details/examples
 - The sidecar configuration can be modified through the `datadog_sidecar` variable, for example to modify the cpu/memory of the sidecar.
 
-### Single-language APM instrumentation
+### Automatic APM instrumentation
 
-Automatic APM instrumentation is disabled by default. Set `datadog_apm_instrumentation` to copy a tracer into one application container with an Azure Container Apps init container:
+Set `datadog_apm_instrumentation` with at least `language` to inject the datadog tracer into your application:
 
 ```tf
 datadog_apm_instrumentation = {
@@ -84,20 +84,20 @@ datadog_apm_instrumentation = {
 }
 ```
 
-Supported languages are `java`, `js`, `dotnet`, `python`, `ruby`, and `php`. The module uses the `latest` tracer image and `glibc` by default. Set `tracer_version` to pin the tracer and `tracer_libc = "musl"` for musl-based images. Ruby does not support musl, and .NET tracer versions before 3 are unsupported.
+Supported languages are `java`, `js`, `dotnet`, `python`, `ruby`, and `php`. The module uses the `latest` tracer image and `glibc` by default. Set `tracer_version` to pin the tracer and `tracer_libc = "musl"` for musl-based images. Ruby does not support musl, and .NET tracer versions before 3.x.x are unsupported.
 
-The module automatically targets the only container whose name differs from `datadog_sidecar.name`. When multiple application containers exist, set `container_name` explicitly:
+The module automatically targets the application container if only one exists. When multiple application containers exist, set `container_name` explicitly. If the module cannot identify or safely update the target, the module warns and does not inject the tracer or change the configuration for instrumentation.
 
 ```tf
 datadog_apm_instrumentation = {
   language       = "js"
-  container_name = "web"
+  container_name = "my-app"
   tracer_version = "latest"
   tracer_libc    = "glibc"
 }
 ```
 
-The target container receives the tracer mount, loader environment variables, `DD_TRACE_ENABLED=true`, and the `_dd.injection.mode:serverless-single-lang` tag. Other application containers and the Datadog Agent sidecar are not instrumented. If the module cannot identify or safely update the target, Terraform warns and does not inject the tracer or change the target configuration.
+It is not reccomended to use automatic instrumentation if you have scale-to-zero enabled, as doing so can increase cold-start delays. Prefer manual instrumentation (installing the tracer for your language in your application code/dockerfile) in these cases.
 
 ### Datadog Variables
 
