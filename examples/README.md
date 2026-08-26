@@ -5,6 +5,7 @@ Examples for instrumenting Azure Container Apps with a Datadog agent sidecar con
 ## Available Languages
 
 - [Python](./python)
+- [Python single-language instrumentation](./python-ssi/)
 - [Node.js](./node/)
 - [Go](./go/)
 - [Java](./java/)
