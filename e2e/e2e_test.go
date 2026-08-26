@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -35,14 +36,22 @@ const (
 	// so a pass or failure reflects this module, not a mutable upstream tag.
 	defaultWorkloadImage       = "dde2etfcapp.azurecr.io/self-monitoring-container-app-node-sidecar-prod@sha256:c55211a19ae3ef68fada20542825fbcd18f346e7f540622cfeb924ce732f5a4c"
 	defaultServerlessInitImage = "index.docker.io/datadog/serverless-init@sha256:6fb7637628fdf31d536bc9c49fbe6304371df5e2ecdb15c1c2d5e2d66395c3a0"
+	ssiRegistry                = "dde2etfcapp.azurecr.io"
 	defaultSubscriptionID      = "1dd25961-a5c7-45bf-a5ba-c1475d365cc7"
 	defaultResourceGroup       = "datadog-ci-e2e"
-	defaultContainerAppEnv     = "dd-ci-e2e-tf-capp-env"
+	defaultContainerAppEnv     = "dd-ci-e2e-capp-env"
 )
 
-// TestContainerAppE2E exercises the full instrumentation lifecycle against a real
-// Azure Container App: APPLY the module (from nothing) -> verify config -> trigger ->
-// verify telemetry -> assert an empty plan -> remove -> verify the app is gone.
+type e2eScenario struct {
+	name            string
+	runIDSuffix     string
+	workloadImage   string
+	instrumentation *instrumentationExpectations
+}
+
+// TestContainerAppE2E runs the existing tracer-in-image baseline and all six SSI
+// runtimes concurrently. Each subtest has an isolated fixture, state, resource, and
+// telemetry identity.
 func TestContainerAppE2E(t *testing.T) {
 	cfg := loadConfig(t)
 	ctx := context.Background()
@@ -57,33 +66,57 @@ func TestContainerAppE2E(t *testing.T) {
 		}
 	}
 
-	runID := os.Getenv("E2E_RUN_ID")
-	if runID == "" {
-		runID = e2eshared.NewRunID()
+	baseRunID := os.Getenv("E2E_RUN_ID")
+	if baseRunID == "" {
+		baseRunID = e2eshared.NewRunID()
 	}
+	if len(baseRunID) > 8 {
+		baseRunID = baseRunID[:8]
+	}
+
+	for _, scenario := range e2eScenarios(cfg) {
+		scenario := scenario
+		t.Run(scenario.name, func(t *testing.T) {
+			t.Parallel()
+			runContainerAppScenario(t, cfg, environment.ID, baseRunID, scenario)
+		})
+	}
+}
+
+func runContainerAppScenario(
+	t *testing.T,
+	cfg testConfig,
+	environmentID string,
+	baseRunID string,
+	scenario e2eScenario,
+) {
+	t.Helper()
+	ctx := context.Background()
+	runID := baseRunID + "-" + scenario.runIDSuffix
 	name := e2eshared.ResourceName(sharedCfg, runID)
 	createdTS := strconv.FormatInt(time.Now().Unix(), 10)
 	runTag := fmt.Sprintf("%s:%s", e2eshared.DefaultRunIDTagKey, runID)
 	exp := expectations{
-		Service:       name,
-		Env:           fixtureEnv,
-		Version:       fixtureVersion,
-		RunID:         runID,
-		RunTag:        runTag,
-		Site:          cfg.site,
-		WorkloadImage: cfg.workloadImage,
-		SidecarImage:  cfg.sidecarImage,
+		Service:         name,
+		Env:             fixtureEnv,
+		Version:         fixtureVersion,
+		RunID:           runID,
+		RunTag:          runTag,
+		Site:            cfg.site,
+		WorkloadImage:   scenario.workloadImage,
+		SidecarImage:    cfg.sidecarImage,
+		Instrumentation: scenario.instrumentation,
 	}
 	telID := e2eshared.IdentityFor(sharedCfg, name, fixtureEnv, "", runID)
 	t.Logf("run id %s -> app %q", runID, name)
 
 	opts := &terraform.Options{
-		TerraformDir: "fixture",
+		TerraformDir: copyTerraformFixture(t),
 		Vars: map[string]interface{}{
 			"instrument":                   true,
 			"subscription_id":              cfg.subscriptionID,
 			"resource_group_name":          cfg.resourceGroup,
-			"container_app_environment_id": environment.ID,
+			"container_app_environment_id": environmentID,
 			"name":                         name,
 			"workload_image":               exp.WorkloadImage,
 			"datadog_site":                 exp.Site,
@@ -110,6 +143,11 @@ func TestContainerAppE2E(t *testing.T) {
 	}
 	if cfg.workloadProfile != "" {
 		opts.Vars["workload_profile_name"] = cfg.workloadProfile
+	}
+	if scenario.instrumentation != nil {
+		opts.Vars["datadog_apm_instrumentation"] = map[string]interface{}{
+			"language": scenario.instrumentation.Language,
+		}
 	}
 
 	cleanupComplete := false
@@ -166,6 +204,78 @@ func TestContainerAppE2E(t *testing.T) {
 		require.True(t, isContainerAppNotFound(err), "expected an Azure not-found error, got: %v", err)
 	})
 	cleanupComplete = true
+}
+
+func e2eScenarios(cfg testConfig) []e2eScenario {
+	return []e2eScenario{
+		{
+			name:          "baseline",
+			runIDSuffix:   "base",
+			workloadImage: cfg.workloadImage,
+		},
+		ssiScenario("java", "java", "E2E_SSI_JAVA_IMAGE", map[string]string{
+			"JAVA_TOOL_OPTIONS": "-javaagent:/datadog-lib/dd-java-agent.jar -XX:+IgnoreUnrecognizedVMOptions",
+		}),
+		ssiScenario("node", "js", "E2E_SSI_NODE_IMAGE", map[string]string{
+			"NODE_OPTIONS": "--require /datadog-lib/node_modules/dd-trace/init.js",
+		}),
+		ssiScenario("dotnet", "dotnet", "E2E_SSI_DOTNET_IMAGE", map[string]string{
+			"CORECLR_ENABLE_PROFILING": "1",
+			"CORECLR_PROFILER":         "{846F5F1C-F9AE-4B07-969E-05C26BC060D8}",
+			"CORECLR_PROFILER_PATH":    "/datadog-lib/Datadog.Trace.ClrProfiler.Native.so",
+			"DD_DOTNET_TRACER_HOME":    tracerMountPath,
+			"LD_PRELOAD":               "/datadog-lib/continuousprofiler/Datadog.Linux.ApiWrapper.x64.so",
+		}),
+		ssiScenario("python", "python", "E2E_SSI_PYTHON_IMAGE", map[string]string{
+			"PYTHONPATH": tracerMountPath,
+		}),
+		ssiScenario("ruby", "ruby", "E2E_SSI_RUBY_IMAGE", map[string]string{
+			"RUBYOPT": "-r/datadog-lib/auto_inject",
+		}),
+		ssiScenario("php", "php", "E2E_SSI_PHP_IMAGE", map[string]string{
+			"PHP_INI_SCAN_DIR":       ":/datadog-lib/linux-gnu/loader",
+			"DD_LOADER_PACKAGE_PATH": tracerMountPath,
+		}),
+	}
+}
+
+func ssiScenario(name, language, imageEnv string, loaderEnv map[string]string) e2eScenario {
+	return e2eScenario{
+		name:          name,
+		runIDSuffix:   name,
+		workloadImage: getEnv(imageEnv, fmt.Sprintf("%s/%s-ssi:latest", ssiRegistry, name)),
+		instrumentation: &instrumentationExpectations{
+			Language:    language,
+			TracerImage: fmt.Sprintf("datadoghq.azurecr.io/dd-lib-%s-init:latest", language),
+			LoaderEnv:   loaderEnv,
+		},
+	}
+}
+
+// copyTerraformFixture gives each parallel scenario its own Terraform working directory
+// and state while preserving the fixture's relative module source path.
+func copyTerraformFixture(t *testing.T) string {
+	t.Helper()
+	moduleRoot, err := filepath.Abs("..")
+	require.NoError(t, err)
+	tempModuleRoot := filepath.Join(t.TempDir(), "module")
+	tempFixture := filepath.Join(tempModuleRoot, "e2e", "fixture")
+	require.NoError(t, os.MkdirAll(tempFixture, 0o755))
+
+	copyFiles := func(pattern, destination string) {
+		files, err := filepath.Glob(pattern)
+		require.NoError(t, err)
+		require.NotEmpty(t, files, "no Terraform files matched %s", pattern)
+		for _, source := range files {
+			contents, err := os.ReadFile(source)
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(filepath.Join(destination, filepath.Base(source)), contents, 0o644))
+		}
+	}
+	copyFiles(filepath.Join(moduleRoot, "*.tf"), tempModuleRoot)
+	copyFiles(filepath.Join(moduleRoot, "e2e", "fixture", "*.tf"), tempFixture)
+
+	return tempFixture
 }
 
 // checkTelemetryFlowing asserts that both traces and logs carrying this run's identity

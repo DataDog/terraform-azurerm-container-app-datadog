@@ -66,6 +66,16 @@ variable "datadog_version" {
   nullable = false
 }
 
+variable "datadog_apm_instrumentation" {
+  type = object({
+    language       = string
+    container_name = optional(string)
+    tracer_version = optional(string, "latest")
+    tracer_libc    = optional(string, "glibc")
+  })
+  default = null
+}
+
 variable "run_id" {
   type        = string
   nullable    = false
