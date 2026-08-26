@@ -65,7 +65,7 @@ jobs:
         working-directory: e2e
         run: |
           set -o pipefail
-          go test -count=1 -v -timeout 20m -json ./... | jq --unbuffered -jr 'select(.Action == "output") | .Output'
+          go test -count=1 -v -parallel 7 -timeout 20m -json ./... | jq --unbuffered -jr 'select(.Action == "output") | .Output'
         env:
           AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID_E2E }}
           AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_E2E }}
@@ -80,7 +80,7 @@ jobs:
           names="$(az resource list \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --resource-type Microsoft.App/containerApps \
-            --query "[?tags.one_e2e_run_id=='$E2E_RUN_ID'].name" \
+            --query "[?starts_with(tags.one_e2e_run_id, '$E2E_RUN_ID-')].name" \
             --output tsv \
             --only-show-errors)"
           while IFS= read -r name; do
