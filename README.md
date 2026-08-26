@@ -187,7 +187,6 @@ No modules.
 | <a name="output_id"></a> [id](#output\_id) | The ID of the Container App. |
 | <a name="output_identity"></a> [identity](#output\_identity) | An `identity` block as detailed below. |
 | <a name="output_ignored_containers"></a> [ignored\_containers](#output\_ignored\_containers) | List of containers that are ignored by the module. |
-| <a name="output_ignored_init_containers"></a> [ignored\_init\_containers](#output\_ignored\_init\_containers) | List of init containers that are replaced by the module-managed tracer copy init container. |
 | <a name="output_ignored_volume_mounts"></a> [ignored\_volume\_mounts](#output\_ignored\_volume\_mounts) | List of volume mounts that overlap with a module-managed volume and are ignored by the module. |
 | <a name="output_ignored_volumes"></a> [ignored\_volumes](#output\_ignored\_volumes) | List of volumes that are ignored by the module. |
 | <a name="output_ingress"></a> [ingress](#output\_ingress) | An `ingress` block as detailed below. |

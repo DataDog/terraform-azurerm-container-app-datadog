@@ -153,10 +153,7 @@ locals {
             } if env.secret_name != null && !contains(
             concat(
               local.module_controlled_env_vars,
-              local.apm_enabled && index == local.apm_target_container_index ? concat(
-                ["DD_TRACE_ENABLED"],
-                local.apm_merged_env_names,
-              ) : [],
+              local.apm_enabled && index == local.apm_target_container_index ? local.apm_owned_env_names : [],
             ),
             env.name,
           )],
@@ -166,7 +163,7 @@ locals {
             { for env in coalesce(container.env, []) : env.name => env.value
               if env.secret_name == null && !(
                 local.apm_enabled && index == local.apm_target_container_index && contains(
-                  concat(["DD_TRACE_ENABLED"], local.apm_merged_env_names),
+                  local.apm_owned_env_names,
                   env.name,
                 )
               )

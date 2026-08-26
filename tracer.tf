@@ -109,7 +109,7 @@ locals {
   }
   apm_env_fragments    = local.apm_requested ? local.apm_env_fragments_by_language[var.datadog_apm_instrumentation.language] : []
   apm_loader_env_names = [for fragment in local.apm_env_fragments : fragment.name]
-  apm_merged_env_names = concat(local.apm_loader_env_names, ["DD_TAGS"])
+  apm_owned_env_names  = concat(local.apm_loader_env_names, ["DD_TAGS", "DD_TRACE_ENABLED"])
 
   apm_container_name_input = local.apm_requested ? try(trimspace(var.datadog_apm_instrumentation.container_name), "") : ""
   apm_configured_container_name = local.apm_container_name_input != "" ? (
@@ -162,10 +162,10 @@ locals {
   }
   apm_managed_secret_env_names = local.apm_target_container == null ? [] : distinct([
     for env in coalesce(local.apm_target_container.env, []) : env.name
-    if env.secret_name != null && contains(local.apm_merged_env_names, env.name)
+    if env.secret_name != null && contains(local.apm_owned_env_names, env.name)
   ])
   apm_managed_duplicate_env_names = local.apm_target_container == null ? [] : distinct([
-    for name in local.apm_merged_env_names : name
+    for name in local.apm_owned_env_names : name
     if length([for env in coalesce(local.apm_target_container.env, []) : env if env.name == name]) > 1
   ])
   apm_loader_set_if_absent_conflicts = [
@@ -343,12 +343,4 @@ check "apm_tracer_mount_does_not_conflict_with_logging_mount" {
     condition     = !local.apm_shared_volume_path_conflict
     error_message = "datadog_shared_volume.path cannot be \"${local.tracer_volume_mount_path}\" when SSI and log collection are enabled. SSI will not be applied."
   }
-}
-
-output "ignored_init_containers" {
-  description = "List of init containers that are replaced by the module-managed tracer copy init container."
-  value = [
-    for container in coalesce(var.template.init_container, []) : container
-    if !contains(local.init_containers_without_tracer_copy, container)
-  ]
 }
