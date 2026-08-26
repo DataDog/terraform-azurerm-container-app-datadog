@@ -89,6 +89,57 @@ variable "datadog_shared_volume" {
   }
 }
 
+variable "datadog_apm_instrumentation" {
+  type = object({
+    language       = string
+    container_name = optional(string)
+    tracer_version = optional(string, "latest")
+    tracer_libc    = optional(string, "glibc")
+  })
+  description = <<-DESCRIPTION
+Enables single-language APM auto-instrumentation. Defaults to disabled. Nested attributes include:
+- language - Tracer language: 'java', 'js', 'dotnet', 'python', 'ruby', or 'php'.
+- container_name - Application container to instrument. Required when the template has multiple application containers.
+- tracer_version - Tag of the dd-lib-<language>-init image. Defaults to 'latest'. .NET versions before 3 are unsupported.
+- tracer_libc - C library ABI of the application image: 'glibc' (default) or 'musl'. Ruby does not support musl.
+DESCRIPTION
+  default     = null
+
+  validation {
+    condition = var.datadog_apm_instrumentation == null ? true : contains(
+      ["java", "js", "dotnet", "python", "ruby", "php"],
+      var.datadog_apm_instrumentation.language,
+    )
+    error_message = "Invalid language. Valid options are: 'java', 'js', 'dotnet', 'python', 'ruby', and 'php'."
+  }
+
+  validation {
+    condition = var.datadog_apm_instrumentation == null ? true : contains(
+      ["glibc", "musl"],
+      var.datadog_apm_instrumentation.tracer_libc,
+    )
+    error_message = "Invalid tracer_libc. Valid options are: 'glibc' and 'musl'."
+  }
+
+  validation {
+    condition = var.datadog_apm_instrumentation == null ? true : !(
+      var.datadog_apm_instrumentation.language == "ruby" &&
+      var.datadog_apm_instrumentation.tracer_libc == "musl"
+    )
+    error_message = "Ruby single-language APM instrumentation does not support musl. Use tracer_libc = \"glibc\", or instrument Ruby manually."
+  }
+
+  validation {
+    condition = var.datadog_apm_instrumentation == null ? true : (
+      var.datadog_apm_instrumentation.language != "dotnet" ? true : (
+        length(regexall("^v?([0-9]+)([.]|$)", var.datadog_apm_instrumentation.tracer_version)) == 0 ? true :
+        tonumber(regexall("^v?([0-9]+)([.]|$)", var.datadog_apm_instrumentation.tracer_version)[0][0]) >= 3
+      )
+    )
+    error_message = "Unsupported .NET tracer_version. Versions before 3.0 require architecture-specific package paths. Use tracer_version \"latest\" or a 3.x or later tag."
+  }
+}
+
 variable "datadog_sidecar" {
   type = object({
     image       = optional(string, "index.docker.io/datadog/serverless-init:latest")
@@ -117,4 +168,12 @@ Datadog sidecar configuration. Nested attributes include:
 - health_port - Health port to start the startup probe.
 - env - List of environment variables with name and value fieldsfor customizing Datadog agent configuration, if any.
 DESCRIPTION
+  validation {
+    condition = (
+      floor(var.datadog_sidecar.health_port) == var.datadog_sidecar.health_port &&
+      var.datadog_sidecar.health_port >= 1 &&
+      var.datadog_sidecar.health_port <= 65535
+    )
+    error_message = "Invalid health_port. Must be an integer between 1 and 65535."
+  }
 }

@@ -227,7 +227,7 @@ resource "azurerm_container_app" "this" {
       }
     }
     dynamic "init_container" {
-      for_each = try(var.template.init_container, null) != null ? var.template.init_container : []
+      for_each = local.template_init_container
       content {
         args    = try(init_container.value.args, null)
         command = try(init_container.value.command, null)

@@ -74,6 +74,31 @@ module "example_container_app" {
 - See [variables.tf](variables.tf) for the complete list of datadog-specific variables, or the table below for full syntax details/examples
 - The sidecar configuration can be modified through the `datadog_sidecar` variable, for example to modify the cpu/memory of the sidecar.
 
+### Automatic APM instrumentation
+
+Set `datadog_apm_instrumentation` with at least `language` to inject the datadog tracer into your application:
+
+```tf
+datadog_apm_instrumentation = {
+  language = "python"
+}
+```
+
+Supported languages are `java`, `js`, `dotnet`, `python`, `ruby`, and `php`. The module uses the `latest` tracer image and `glibc` by default. Set `tracer_version` to pin the tracer and `tracer_libc = "musl"` for musl-based images. Ruby does not support musl, and .NET tracer versions before 3.x.x are unsupported.
+
+The module automatically targets the application container if only one exists. When multiple application containers exist, set `container_name` explicitly. If the module cannot identify or safely update the target, the module warns and does not inject the tracer or change the configuration for instrumentation.
+
+```tf
+datadog_apm_instrumentation = {
+  language       = "js"
+  container_name = "my-app"
+  tracer_version = "latest"
+  tracer_libc    = "glibc"
+}
+```
+
+It is not reccomended to use automatic instrumentation if you have scale-to-zero enabled, as doing so can increase cold-start delays. Prefer manual instrumentation (installing the tracer for your language in your application code/dockerfile) in these cases.
+
 ### Datadog Variables
 
 The following Datadog variables can be set on application containers:
@@ -128,6 +153,7 @@ No modules.
 | <a name="input_container_app_environment_id"></a> [container\_app\_environment\_id](#input\_container\_app\_environment\_id) | The ID of the Container App Environment to host this Container App. | `string` | n/a | yes |
 | <a name="input_dapr"></a> [dapr](#input\_dapr) | A `dapr` block as detailed below. | <pre>object({<br/>    app_id       = string,<br/>    app_port     = optional(number),<br/>    app_protocol = optional(string)<br/>  })</pre> | `null` | no |
 | <a name="input_datadog_api_key"></a> [datadog\_api\_key](#input\_datadog\_api\_key) | Datadog API key | `string` | n/a | yes |
+| <a name="input_datadog_apm_instrumentation"></a> [datadog\_apm\_instrumentation](#input\_datadog\_apm\_instrumentation) | Enables single-language APM auto-instrumentation. Defaults to disabled. Nested attributes include:<br/>- language - Tracer language: 'java', 'js', 'dotnet', 'python', 'ruby', or 'php'.<br/>- container\_name - Application container to instrument. Required when the template has multiple application containers.<br/>- tracer\_version - Tag of the dd-lib-<language>-init image. Defaults to 'latest'. .NET versions before 3 are unsupported.<br/>- tracer\_libc - C library ABI of the application image: 'glibc' (default) or 'musl'. Ruby does not support musl. | <pre>object({<br/>    language       = string<br/>    container_name = optional(string)<br/>    tracer_version = optional(string, "latest")<br/>    tracer_libc    = optional(string, "glibc")<br/>  })</pre> | `null` | no |
 | <a name="input_datadog_enable_logging"></a> [datadog\_enable\_logging](#input\_datadog\_enable\_logging) | Enables log collection. Defaults to true. | `bool` | `true` | no |
 | <a name="input_datadog_env"></a> [datadog\_env](#input\_datadog\_env) | Datadog Environment tag, used for Unified Service Tagging. | `string` | `null` | no |
 | <a name="input_datadog_log_level"></a> [datadog\_log\_level](#input\_datadog\_log\_level) | Datadog agent's level of log output, from most to least output: TRACE, DEBUG, INFO, WARN, ERROR, CRITICAL | `string` | `null` | no |
@@ -161,7 +187,7 @@ No modules.
 | <a name="output_id"></a> [id](#output\_id) | The ID of the Container App. |
 | <a name="output_identity"></a> [identity](#output\_identity) | An `identity` block as detailed below. |
 | <a name="output_ignored_containers"></a> [ignored\_containers](#output\_ignored\_containers) | List of containers that are ignored by the module. |
-| <a name="output_ignored_volume_mounts"></a> [ignored\_volume\_mounts](#output\_ignored\_volume\_mounts) | List of volume mounts that overlap with the Datadog shared volume and are ignored by the module. |
+| <a name="output_ignored_volume_mounts"></a> [ignored\_volume\_mounts](#output\_ignored\_volume\_mounts) | List of volume mounts that overlap with a module-managed volume and are ignored by the module. |
 | <a name="output_ignored_volumes"></a> [ignored\_volumes](#output\_ignored\_volumes) | List of volumes that are ignored by the module. |
 | <a name="output_ingress"></a> [ingress](#output\_ingress) | An `ingress` block as detailed below. |
 | <a name="output_latest_revision_fqdn"></a> [latest\_revision\_fqdn](#output\_latest\_revision\_fqdn) | The FQDN of the Latest Revision of the Container App. |
