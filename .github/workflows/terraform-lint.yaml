@@ -19,11 +19,13 @@ jobs:
 
       - name: Install TFLint
         run: |
-          curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+          cd "$RUNNER_TEMP"
+          curl -fsSLO https://github.com/terraform-linters/tflint/releases/download/v0.65.0/tflint_linux_amd64.zip
+          curl -fsSLO https://github.com/terraform-linters/tflint/releases/download/v0.65.0/checksums.txt
+          sha256sum --ignore-missing -c checksums.txt
+          unzip -q tflint_linux_amd64.zip
+          sudo install -m 0755 tflint /usr/local/bin/tflint
           tflint --version
-        env:
-          # https://github.com/terraform-linters/tflint/blob/master/docs/user-guide/plugins.md#avoiding-rate-limiting
-          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Run TFLint
         run: |
