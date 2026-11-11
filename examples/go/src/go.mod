@@ -5,9 +5,9 @@ go 1.26.0
 toolchain go1.26.2
 
 require (
-	github.com/DataDog/dd-trace-go/contrib/net/http/v2 v2.11.2
-	github.com/DataDog/dd-trace-go/contrib/sirupsen/logrus/v2 v2.11.2
-	github.com/DataDog/dd-trace-go/v2 v2.11.2
+	github.com/DataDog/dd-trace-go/contrib/net/http/v2 v2.12.0
+	github.com/DataDog/dd-trace-go/contrib/sirupsen/logrus/v2 v2.12.0
+	github.com/DataDog/dd-trace-go/v2 v2.12.0
 	github.com/sirupsen/logrus v1.9.4
 )
 
