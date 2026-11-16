@@ -12,8 +12,6 @@
             "template.volume"
         ],
         "always_allow": [
-            "identity.principal_id",
-            "identity.tenant_id",
             "ingress.custom_domain",
             "ingress.fqdn",
             "template.revision_suffix",
@@ -23,7 +21,10 @@
         ],
         "never_allow": [
             "ingress.fqdn",
-            "ingress.custom_domain"
+            "ingress.custom_domain",
+            "identity.principal_id",
+            "identity.tenant_id",
+            "ingress.session_affinity_enabled"
         ]
     }
 }

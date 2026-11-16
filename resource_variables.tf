@@ -74,8 +74,6 @@ DESCRIPTION
 variable "identity" {
   type = object({
     identity_ids = optional(set(string)),
-    principal_id = string,
-    tenant_id    = string,
     type         = string
   })
   default     = null

@@ -23,8 +23,6 @@ resource "azurerm_container_app" "this" {
     for_each = try(var.identity, null) != null ? [true] : []
     content {
       identity_ids = try(var.identity.identity_ids, null)
-      principal_id = var.identity.principal_id
-      tenant_id    = var.identity.tenant_id
       type         = var.identity.type
     }
   }
