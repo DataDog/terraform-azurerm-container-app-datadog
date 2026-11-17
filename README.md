@@ -28,6 +28,11 @@ resource "azurerm_container_app_environment" "example" {
   name = "my-container-app-env"
   resource_group_name = azurerm_resource_group.example.name
   location = "eastus2"
+
+  workload_profile {
+    name                  = "Consumption"
+    workload_profile_type = "Consumption"
+  }
 }
 
 module "example_container_app" {
@@ -36,7 +41,7 @@ module "example_container_app" {
 
   name                         = "my-container-app"
   resource_group_name          = azurerm_resource_group.example.name
-  container_app_environment_id = azurerm_container_app_environment.example.name
+  container_app_environment_id = azurerm_container_app_environment.example.id
 
 
   datadog_api_key = var.datadog_api_key
@@ -73,6 +78,7 @@ module "example_container_app" {
 - Any optional blocks that can occur multiple times are represented as a list-collection of objects with the same types/parameters as the blocks
 - See [variables.tf](variables.tf) for the complete list of datadog-specific variables, or the table below for full syntax details/examples
 - The sidecar configuration can be modified through the `datadog_sidecar` variable, for example to modify the cpu/memory of the sidecar.
+- Set `workload_profile_name` to match your environment type. Environments with workload profiles, the Azure default, place apps on the `Consumption` profile when the name is unset, so set `workload_profile_name = "Consumption"` to avoid a permanent plan diff. Leave it unset for consumption-only environments.
 
 ### Automatic APM instrumentation
 
@@ -164,7 +170,7 @@ No modules.
 | <a name="input_datadog_site"></a> [datadog\_site](#input\_datadog\_site) | Datadog site | `string` | `"datadoghq.com"` | no |
 | <a name="input_datadog_tags"></a> [datadog\_tags](#input\_datadog\_tags) | Datadog tags | `list(string)` | `null` | no |
 | <a name="input_datadog_version"></a> [datadog\_version](#input\_datadog\_version) | Datadog Version tag, used for Unified Service Tagging. | `string` | `null` | no |
-| <a name="input_identity"></a> [identity](#input\_identity) | An `identity` block as detailed below. | <pre>object({<br/>    identity_ids = optional(set(string)),<br/>    principal_id = string,<br/>    tenant_id    = string,<br/>    type         = string<br/>  })</pre> | `null` | no |
+| <a name="input_identity"></a> [identity](#input\_identity) | An `identity` block as detailed below. | <pre>object({<br/>    identity_ids = optional(set(string)),<br/>    type         = string<br/>  })</pre> | `null` | no |
 | <a name="input_ingress"></a> [ingress](#input\_ingress) | An `ingress` block as detailed below. | <pre>object({<br/>    allow_insecure_connections = optional(bool),<br/>    client_certificate_mode    = optional(string),<br/>    exposed_port               = optional(number),<br/>    external_enabled           = optional(bool),<br/>    target_port                = number,<br/>    transport                  = optional(string),<br/>    cors = optional(object({<br/>      allow_credentials_enabled = optional(bool),<br/>      allowed_headers           = optional(list(string)),<br/>      allowed_methods           = optional(list(string)),<br/>      allowed_origins           = list(string),<br/>      exposed_headers           = optional(list(string)),<br/>      max_age_in_seconds        = optional(number)<br/>    })),<br/>    ip_security_restriction = optional(list(object({<br/>      action           = string,<br/>      description      = optional(string),<br/>      ip_address_range = string,<br/>      name             = string<br/>    }))),<br/>    traffic_weight = list(object({<br/>      label           = optional(string),<br/>      latest_revision = optional(bool),<br/>      percentage      = number,<br/>      revision_suffix = optional(string)<br/>    }))<br/>  })</pre> | `null` | no |
 | <a name="input_max_inactive_revisions"></a> [max\_inactive\_revisions](#input\_max\_inactive\_revisions) | The maximum of inactive revisions allowed for this Container App. | `number` | `null` | no |
 | <a name="input_name"></a> [name](#input\_name) | The name for this Container App. | `string` | n/a | yes |
