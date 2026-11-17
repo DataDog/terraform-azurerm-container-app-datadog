@@ -95,6 +95,27 @@ locals {
   )
 }
 
+# Containers in a Container App replica share one network namespace, so the app can't listen on
+# an agent port: the agent binds first and the app fails to start.
+locals {
+  app_port = try(var.ingress.target_port, null)
+  # The Datadog agent sidecar also listens on this TCP port for traces.
+  agent_trace_port = 8126
+}
+
+resource "terraform_data" "port_preconditions" {
+  lifecycle {
+    precondition {
+      condition     = local.app_port != var.datadog_sidecar.health_port
+      error_message = "Port ${var.datadog_sidecar.health_port} (ingress.target_port) conflicts with Datadog Agent health port ${var.datadog_sidecar.health_port}. Change ingress.target_port or datadog_sidecar.health_port."
+    }
+    precondition {
+      condition     = local.app_port != local.agent_trace_port
+      error_message = "Port ${local.agent_trace_port} (ingress.target_port) conflicts with Datadog Agent trace port ${local.agent_trace_port}. Change ingress.target_port."
+    }
+  }
+}
+
 check "logging_volume_already_exists" {
   assert {
     condition     = length(coalesce(var.template.volume, [])) == length(local.volumes_without_shared_volume)
