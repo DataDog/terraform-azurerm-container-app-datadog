@@ -32,10 +32,9 @@ const (
 	fixtureEnv     = "e2e"
 	fixtureVersion = "1.0.0"
 
-	// One canonical runtime per platform (Node.js). Both images are pinned by digest
-	// so a pass or failure reflects this module, not a mutable upstream tag.
-	defaultWorkloadImage       = "dde2etfcapp.azurecr.io/self-monitoring-container-app-node-sidecar-prod@sha256:c55211a19ae3ef68fada20542825fbcd18f346e7f540622cfeb924ce732f5a4c"
-	defaultServerlessInitImage = "index.docker.io/datadog/serverless-init@sha256:6fb7637628fdf31d536bc9c49fbe6304371df5e2ecdb15c1c2d5e2d66395c3a0"
+	// One canonical runtime per platform (Node.js).
+	defaultWorkloadImage       = "dde2etfcapp.azurecr.io/self-monitoring-container-app-node-sidecar-prod:latest"
+	defaultServerlessInitImage = "index.docker.io/datadog/serverless-init:latest"
 	ssiRegistry                = "dde2etfcapp.azurecr.io"
 	defaultSubscriptionID      = "1dd25961-a5c7-45bf-a5ba-c1475d365cc7"
 	defaultResourceGroup       = "datadog-ci-e2e"
