@@ -216,15 +216,10 @@ locals {
   apm_enabled = (
     local.apm_requested &&
     local.apm_target_container_index != null &&
-    length(local.apm_managed_secret_env_names) == 0 &&
-    length(local.apm_managed_duplicate_env_names) == 0 &&
-    length(local.apm_loader_set_if_absent_conflicts) == 0 &&
     length(local.apm_loader_env_exceeding_max_length) == 0 &&
     length(local.apm_existing_tracer_volumes) == 0 &&
     length(local.apm_existing_tracer_init_containers) == 0 &&
-    length(local.apm_conflicting_tracer_volume_mounts) == 0 &&
-    !local.apm_shared_volume_name_conflict &&
-    !local.apm_shared_volume_path_conflict
+    length(local.apm_conflicting_tracer_volume_mounts) == 0
   )
 
   volumes_without_tracer_volume = local.apm_enabled ? [
@@ -263,54 +258,6 @@ check "apm_scale_to_zero" {
   }
 }
 
-check "apm_target_container_exists" {
-  assert {
-    condition     = !local.apm_requested || length(local.containers_without_sidecar) > 0
-    error_message = "No application container was found to instrument. Add a container to template.container other than the Datadog agent sidecar. SSI will not be applied."
-  }
-}
-
-check "apm_target_container_known" {
-  assert {
-    condition = (
-      !local.apm_requested || local.apm_configured_container_name == null ||
-      length(local.apm_matching_container_indexes) > 0
-    )
-    error_message = "datadog_apm_instrumentation.container_name is \"${coalesce(local.apm_configured_container_name, "null")}\", but no application container has that name. Available application containers: ${join(", ", [for container in local.containers_without_sidecar : container.name])}. SSI will not be applied."
-  }
-}
-
-check "apm_target_container_not_ambiguous" {
-  assert {
-    condition = (
-      !local.apm_requested || local.apm_configured_container_name != null ||
-      length(local.containers_without_sidecar) <= 1
-    )
-    error_message = "Multiple application containers are available: ${join(", ", [for container in local.containers_without_sidecar : container.name])}. Set datadog_apm_instrumentation.container_name to the container to instrument. SSI will not be applied."
-  }
-}
-
-check "apm_managed_env_not_secret_backed" {
-  assert {
-    condition     = !local.apm_requested || length(local.apm_managed_secret_env_names) == 0
-    error_message = "SSI environment variable(s) on the target container use secret references and cannot be safely extended: ${join(", ", local.apm_managed_secret_env_names)}. Set them to literal values or remove them before enabling datadog_apm_instrumentation. SSI will not be applied."
-  }
-}
-
-check "apm_managed_env_not_duplicated" {
-  assert {
-    condition     = !local.apm_requested || length(local.apm_managed_duplicate_env_names) == 0
-    error_message = "SSI environment variable(s) appear more than once on the target container and cannot be safely modified: ${join(", ", local.apm_managed_duplicate_env_names)}. Remove the duplicates before enabling datadog_apm_instrumentation. SSI will not be applied."
-  }
-}
-
-check "apm_loader_env_set_if_absent_compatible" {
-  assert {
-    condition     = !local.apm_requested || length(local.apm_loader_set_if_absent_conflicts) == 0
-    error_message = "SSI loader environment variable(s) conflict with required tracer values: ${join(", ", local.apm_loader_set_if_absent_conflicts)}. Remove them or set them to the required Datadog tracer values. SSI will not be applied."
-  }
-}
-
 check "apm_loader_env_within_max_length" {
   assert {
     condition     = !local.apm_requested || length(local.apm_loader_env_exceeding_max_length) == 0
@@ -339,16 +286,48 @@ check "apm_tracer_volume_mount_already_exists" {
   }
 }
 
-check "apm_tracer_volume_does_not_conflict_with_logging_volume" {
-  assert {
-    condition     = !local.apm_shared_volume_name_conflict
-    error_message = "datadog_shared_volume.name cannot be \"${local.tracer_volume_name}\" when SSI and log collection are enabled. SSI will not be applied."
-  }
-}
+# Each precondition rejects an SSI configuration the module cannot instrument safely.
+resource "terraform_data" "ssi_preconditions" {
+  count = local.apm_requested ? 1 : 0
 
-check "apm_tracer_mount_does_not_conflict_with_logging_mount" {
-  assert {
-    condition     = !local.apm_shared_volume_path_conflict
-    error_message = "datadog_shared_volume.path cannot be \"${local.tracer_volume_mount_path}\" when SSI and log collection are enabled. SSI will not be applied."
+  lifecycle {
+    precondition {
+      condition     = length(local.containers_without_sidecar) > 0
+      error_message = "No application container was found to instrument. Add a container to template.container other than the Datadog agent sidecar."
+    }
+    precondition {
+      condition = (
+        local.apm_configured_container_name == null ||
+        length(local.apm_matching_container_indexes) > 0
+      )
+      error_message = "datadog_apm_instrumentation.container_name is \"${coalesce(local.apm_configured_container_name, "null")}\", but no application container has that name. Available application containers: ${join(", ", [for container in local.containers_without_sidecar : container.name])}."
+    }
+    precondition {
+      condition = (
+        local.apm_configured_container_name != null ||
+        length(local.containers_without_sidecar) <= 1
+      )
+      error_message = "Multiple application containers are available: ${join(", ", [for container in local.containers_without_sidecar : container.name])}. Set datadog_apm_instrumentation.container_name to the container to instrument."
+    }
+    precondition {
+      condition     = length(local.apm_managed_secret_env_names) == 0
+      error_message = "SSI environment variable(s) on the target container use secret references and cannot be safely extended: ${join(", ", local.apm_managed_secret_env_names)}. Set them to literal values or remove them before enabling datadog_apm_instrumentation."
+    }
+    precondition {
+      condition     = length(local.apm_managed_duplicate_env_names) == 0
+      error_message = "SSI environment variable(s) appear more than once on the target container and cannot be safely modified: ${join(", ", local.apm_managed_duplicate_env_names)}. Remove the duplicates before enabling datadog_apm_instrumentation."
+    }
+    precondition {
+      condition     = length(local.apm_loader_set_if_absent_conflicts) == 0
+      error_message = "SSI loader environment variable(s) conflict with required tracer values: ${join(", ", local.apm_loader_set_if_absent_conflicts)}. Remove them or set them to the required Datadog tracer values."
+    }
+    precondition {
+      condition     = !local.apm_shared_volume_name_conflict
+      error_message = "datadog_shared_volume.name cannot be \"${local.tracer_volume_name}\" when SSI and log collection are enabled."
+    }
+    precondition {
+      condition     = !local.apm_shared_volume_path_conflict
+      error_message = "datadog_shared_volume.path cannot be \"${local.tracer_volume_mount_path}\" when SSI and log collection are enabled."
+    }
   }
 }

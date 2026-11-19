@@ -92,7 +92,7 @@ datadog_apm_instrumentation = {
 
 Supported languages are `java`, `js`, `dotnet`, `python`, `ruby`, and `php`. The module uses the `latest` tracer image and `glibc` by default. Set `tracer_version` to pin the tracer and `tracer_libc = "musl"` for musl-based images. Ruby does not support musl, and .NET tracer versions before 3.x.x are unsupported.
 
-The module automatically targets the application container if only one exists. When multiple application containers exist, set `container_name` explicitly. If the module cannot identify or safely update the target, the module warns and does not inject the tracer or change the configuration for instrumentation.
+The module automatically targets the application container if only one exists. When multiple application containers exist, set `container_name` explicitly. If the module cannot identify the target, or the target container sets a loader variable, `DD_TAGS`, or `DD_TRACE_ENABLED` from a secret reference or more than once, `terraform plan` fails with an error that explains what to change. If the `datadog-tracer` volume, init container, or volume mount already exists, or a loader variable would exceed its maximum length, the module warns and does not inject the tracer or change the configuration for instrumentation.
 
 ```tf
 datadog_apm_instrumentation = {
@@ -150,6 +150,7 @@ No modules.
 | Name | Type |
 |------|------|
 | [azurerm_container_app.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/container_app) | resource |
+| [terraform_data.ssi_preconditions](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 | [azurerm_client_config.current](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/client_config) | data source |
 
 ## Inputs
