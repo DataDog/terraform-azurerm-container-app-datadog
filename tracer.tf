@@ -161,21 +161,14 @@ locals {
       )
     )
   }
-  # Names datadog-ci rejects when secret-backed or duplicated: loader variables and DD_TAGS.
-  apm_merged_env_names = concat(local.apm_loader_env_names, ["DD_TAGS"])
   apm_managed_secret_env_names = local.apm_target_container == null ? [] : distinct([
     for env in coalesce(local.apm_target_container.env, []) : env.name
-    if env.secret_name != null && contains(local.apm_merged_env_names, env.name)
+    if env.secret_name != null && contains(local.apm_owned_env_names, env.name)
   ])
   apm_managed_duplicate_env_names = local.apm_target_container == null ? [] : distinct([
-    for name in local.apm_merged_env_names : name
+    for name in local.apm_owned_env_names : name
     if length([for env in coalesce(local.apm_target_container.env, []) : env if env.name == name]) > 1
   ])
-  # datadog-ci overwrites DD_TRACE_ENABLED, so the module only skips SSI instead of replacing it.
-  apm_trace_enabled_unsafe = local.apm_target_container == null ? false : (
-    length([for env in coalesce(local.apm_target_container.env, []) : env if env.name == "DD_TRACE_ENABLED" && env.secret_name != null]) > 0 ||
-    length([for env in coalesce(local.apm_target_container.env, []) : env if env.name == "DD_TRACE_ENABLED"]) > 1
-  )
   apm_loader_set_if_absent_conflicts = [
     for fragment in local.apm_env_fragments : fragment.name
     if fragment.mode == "set-if-absent" &&
@@ -223,7 +216,6 @@ locals {
   apm_enabled = (
     local.apm_requested &&
     local.apm_target_container_index != null &&
-    !local.apm_trace_enabled_unsafe &&
     length(local.apm_loader_env_exceeding_max_length) == 0 &&
     length(local.apm_existing_tracer_volumes) == 0 &&
     length(local.apm_existing_tracer_init_containers) == 0 &&
@@ -263,13 +255,6 @@ check "apm_scale_to_zero" {
   assert {
     condition     = !local.apm_requested || !local.scale_to_zero_enabled
     error_message = "Automatic APM instrumentation can increase cold-start delays when scale-to-zero is enabled. Prefer manual instrumentation for scale-to-zero workloads."
-  }
-}
-
-check "apm_trace_enabled_env_not_modifiable" {
-  assert {
-    condition     = !local.apm_requested || !local.apm_trace_enabled_unsafe
-    error_message = "DD_TRACE_ENABLED on the target container uses a secret reference or appears more than once and cannot be safely modified. Set it to a single literal value or remove it before enabling datadog_apm_instrumentation. SSI will not be applied."
   }
 }
 
