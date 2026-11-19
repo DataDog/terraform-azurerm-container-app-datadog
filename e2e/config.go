@@ -368,7 +368,7 @@ func verifyInstrumented(app containerApp, exp expectations) error {
 			v.Addf("sidecar should run serverless-init, got %q", sidecar.Image)
 		}
 		if sidecar.Image != exp.SidecarImage {
-			v.Addf("sidecar image = %q, want pinned %q", sidecar.Image, exp.SidecarImage)
+			v.Addf("sidecar image = %q, want %q", sidecar.Image, exp.SidecarImage)
 		}
 		if !sidecar.mounts(sharedVolumeName) {
 			v.Addf("container %q should mount the shared volume", sidecarName)

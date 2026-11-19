@@ -4,7 +4,7 @@
 
 The suite runs a tracer-in-image Node.js baseline and SSI scenarios for Java, Node.js, .NET, Python, Ruby, and PHP. For each run-scoped Azure Container App, the suite:
 
-1. verifies the pinned workload and sidecar images, shared logging volume, Datadog environment variables and API-key secret wiring;
+1. verifies the workload and sidecar images, shared logging volume, Datadog environment variables and API-key secret wiring;
 2. invokes the workload and waits for matching spans and logs;
 3. confirms the next Terraform plan has no diff;
 4. removes the app and confirms it is gone; and
@@ -18,7 +18,7 @@ The suite runs a tracer-in-image Node.js baseline and SSI scenarios for Java, No
 
 The suite defaults to the shared Serverless E2E Azure infrastructure: subscription `1dd25961-a5c7-45bf-a5ba-c1475d365cc7`, resource group `datadog-ci-e2e`, and repo-specific Container App Environment `dd-ci-e2e-capp-env`. Set `AZURE_SUBSCRIPTION_ID`, `AZURE_RESOURCE_GROUP`, or `AZURE_CONTAINER_APP_ENV` to override them. The suite selects the `Consumption` workload profile when the environment exposes one; set `AZURE_CONTAINER_APP_WORKLOAD_PROFILE` to override it. `DD_SITE` defaults to `datadoghq.com`.
 
-The baseline workload and serverless-init images use pinned digests. The SSI workloads use the shared ACR's `:latest` tags. Override images with `E2E_WORKLOAD_IMAGE`, `E2E_SERVERLESS_INIT_IMAGE`, or `E2E_SSI_<RUNTIME>_IMAGE`, where `<RUNTIME>` is `JAVA`, `NODE`, `DOTNET`, `PYTHON`, `RUBY`, or `PHP`. Private images also require `E2E_ACR_SERVER`, `E2E_ACR_USERNAME`, and `E2E_ACR_PASSWORD`.
+All images use `:latest` tags: the baseline workload and serverless-init, and the SSI workloads from the shared ACR. Override images with `E2E_WORKLOAD_IMAGE`, `E2E_SERVERLESS_INIT_IMAGE`, or `E2E_SSI_<RUNTIME>_IMAGE`, where `<RUNTIME>` is `JAVA`, `NODE`, `DOTNET`, `PYTHON`, `RUBY`, or `PHP`. Private images also require `E2E_ACR_SERVER`, `E2E_ACR_USERNAME`, and `E2E_ACR_PASSWORD`.
 
 ## Run locally
 

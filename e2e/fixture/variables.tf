@@ -97,7 +97,7 @@ variable "created_ts" {
 variable "serverless_init_image" {
   type        = string
   nullable    = false
-  description = "Pinned datadog/serverless-init sidecar image. Pinned so failures blame the module, not upstream."
+  description = "The datadog/serverless-init sidecar image."
 }
 
 # Registry credentials for pulling the workload image from a private ACR.
